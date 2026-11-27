@@ -1,0 +1,781 @@
+﻿=== lib\db\queries\weekly.ts ===
+import { getServiceClient } from "@/lib/db/client";
+import { requireHead, scopeOwner } from "@/lib/db/guards";
+import { ValidationError } from "@/lib/db/errors";
+import { businessDaysLeftInWeek, weekEndIST, weekStartIST } from "@/lib/domain/bizdays";
+import { getHolidays } from "@/lib/db/queries/holidays";
+import { coordinatorsOf, listTeam } from "@/lib/db/queries/team";
+import { getWeeklyProgress } from "@/lib/db/queries/views";
+import type { Ctx, TeamWeekSummary, WeeklyStrip } from "@/lib/types";
+
+export async function getWeeklyTarget(
+  ctx: Ctx,
+  memberId: string,
+  weekStart: string,
+): Promise<{ target: number; label: string; source: "row" | "default" }> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase
+    .from("weekly_targets")
+    .select("target_outreach, label")
+    .eq("event_id", ctx.eventId)
+    .eq("member_id", memberId)
+    .eq("week_start", weekStart)
+    .maybeSingle();
+  if (error) throw new Error(`weekly_targets: ${error.message}`);
+  if (data) return { target: Number(data.target_outreach), label: String(data.label ?? "normal"), source: "row" };
+  return { target: ctx.event.weekly_target_default, label: "normal", source: "default" };
+}
+
+/** Everything the coordinator weekly strip needs, from one place. */
+export async function getWeeklyStrip(ctx: Ctx, memberId?: string | null): Promise<WeeklyStrip> {
+  const owner = scopeOwner(ctx, memberId ?? ctx.memberId);
+  if (!owner) throw new ValidationError("A coordinator must be selected.");
+  const weekStart = weekStartIST(ctx.todayIst);
+  const [holidays, tgt, progress] = await Promise.all([
+    getHolidays(ctx.eventId),
+    getWeeklyTarget(ctx, owner, weekStart),
+    getWeeklyProgress(ctx, owner),
+  ]);
+  const row = progress.find((r) => r.week_start === weekStart);
+  const outreached = row?.outreached ?? 0;
+  const responded = row?.responded ?? 0;
+  const left = businessDaysLeftInWeek(ctx.todayIst, holidays);
+  const remaining = Math.max(0, tgt.target - outreached);
+  return {
+    weekStart,
+    weekEnd: weekEndIST(weekStart),
+    target: tgt.target,
+    label: tgt.label,
+    source: tgt.source,
+    outreached,
+    responded,
+    responseRate: outreached > 0 ? responded / outreached : null,
+    businessDaysLeft: left,
+    remaining,
+    requiredPerDay: left > 0 ? remaining / left : null,
+  };
+}
+
+/** Head dashboard chip: team outreached vs team target this week. */
+export async function getTeamWeekSummary(ctx: Ctx): Promise<TeamWeekSummary> {
+  requireHead(ctx);
+  const weekStart = weekStartIST(ctx.todayIst);
+  const supabase = getServiceClient();
+  const [team, progress, targets] = await Promise.all([
+    listTeam(ctx.eventId),
+    getWeeklyProgress(ctx),
+    supabase
+      .from("weekly_targets")
+      .select("member_id, target_outreach")
+      .eq("event_id", ctx.eventId)
+      .eq("week_start", weekStart),
+  ]);
+  if (targets.error) throw new Error(`weekly_targets: ${targets.error.message}`);
+  const members = coordinatorsOf(team).map((m) => {
+    const target = targets.data?.find((t) => t.member_id === m.id)?.target_outreach;
+    const p = progress.find((r) => r.owner_id === m.id && r.week_start === weekStart);
+    return {
+      memberId: m.id,
+      name: m.name,
+      target: target === undefined ? ctx.event.weekly_target_default : Number(target),
+      outreached: p?.outreached ?? 0,
+      responded: p?.responded ?? 0,
+    };
+  });
+  return {
+    weekStart,
+    outreached: members.reduce((sum, m) => sum + m.outreached, 0),
+    responded: members.reduce((sum, m) => sum + m.responded, 0),
+    target: members.reduce((sum, m) => sum + m.target, 0),
+    members,
+  };
+}
+=== lib\db\client.ts ===
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required env var ${name}`);
+  }
+  return value;
+}
+
+let cached: SupabaseClient | null = null;
+
+export function getServiceClient(): SupabaseClient {
+  if (cached) return cached;
+  cached = createClient(required("NEXT_PUBLIC_SUPABASE_URL"), required("SUPABASE_SERVICE_ROLE_KEY"), {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  return cached;
+}
+
+=== lib\db\errors.ts ===
+export class HttpError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "HttpError";
+    this.status = status;
+  }
+}
+
+export class ForbiddenError extends HttpError {
+  constructor(message = "Not allowed") {
+    super(403, message);
+    this.name = "ForbiddenError";
+  }
+}
+
+export class NotFoundError extends HttpError {
+  constructor(message = "Not found") {
+    super(404, message);
+    this.name = "NotFoundError";
+  }
+}
+
+export class ValidationError extends HttpError {
+  constructor(message = "Invalid input") {
+    super(400, message);
+    this.name = "ValidationError";
+  }
+}
+
+export function errorStatus(error: unknown): number {
+  return error instanceof HttpError ? error.status : 500;
+}
+
+export function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return "Unknown error";
+}
+=== lib\db\guards.ts ===
+import type { Ctx } from "@/lib/types";
+import { ForbiddenError } from "@/lib/db/errors";
+
+export function assertWritable(ctx: Ctx): void {
+  if (ctx.isLocked) throw new ForbiddenError("This dataset is locked and read-only.");
+}
+
+export function requireHead(ctx: Ctx): void {
+  if (ctx.role !== "head") throw new ForbiddenError("Head access only.");
+}
+
+export function requireMember(ctx: Ctx): string {
+  if (ctx.role !== "coordinator" || !ctx.memberId) throw new ForbiddenError("Coordinator session required.");
+  return ctx.memberId;
+}
+
+/** Coordinators are always scoped to themselves; the head may pass an owner or null for everyone. */
+export function scopeOwner(ctx: Ctx, requested?: string | null): string | null {
+  if (ctx.role === "coordinator") {
+    if (!ctx.memberId) throw new ForbiddenError("No coordinator selected.");
+    return ctx.memberId;
+  }
+  return requested ?? null;
+}
+=== lib\domain\bizdays.ts ===
+export type Holiday = { day: string };
+
+const DAY_MS = 86_400_000;
+const istFormat = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Kolkata",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function parseIso(iso: string): number {
+  const [y, m, d] = iso.split("-").map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
+function formatMs(ms: number): string {
+  const d = new Date(ms);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function holidaySet(holidays: Holiday[]): Set<string> {
+  return new Set(holidays.map((h) => h.day));
+}
+
+export function toIstDate(value: string | Date): string {
+  return istFormat.format(typeof value === "string" ? new Date(value) : value);
+}
+
+export function todayIST(now: Date = new Date()): string {
+  return istFormat.format(now);
+}
+
+export function addDays(iso: string, days: number): string {
+  return formatMs(parseIso(iso) + days * DAY_MS);
+}
+
+export function daysBetween(start: string, end: string): number {
+  return Math.round((parseIso(end) - parseIso(start)) / DAY_MS);
+}
+
+export function isoDow(iso: string): number {
+  const dow = new Date(parseIso(iso)).getUTCDay();
+  return dow === 0 ? 7 : dow;
+}
+
+export function isBusinessDay(iso: string, holidays: Holiday[] = []): boolean {
+  return isoDow(iso) <= 5 && !holidaySet(holidays).has(iso);
+}
+
+/** Business days AFTER start, up to and including end (matches SQL business_days_between). */
+export function businessDaysBetween(start: string, end: string, holidays: Holiday[] = []): number {
+  if (end <= start) return 0;
+  const hs = holidaySet(holidays);
+  const last = parseIso(end);
+  let count = 0;
+  for (let ms = parseIso(start) + DAY_MS; ms <= last; ms += DAY_MS) {
+    const dow = new Date(ms).getUTCDay();
+    if (dow !== 0 && dow !== 6 && !hs.has(formatMs(ms))) count += 1;
+  }
+  return count;
+}
+
+export function addBusinessDays(start: string, days: number, holidays: Holiday[] = []): string {
+  const hs = holidaySet(holidays);
+  let ms = parseIso(start);
+  let remaining = Math.max(0, Math.floor(days));
+  while (remaining > 0) {
+    ms += DAY_MS;
+    const dow = new Date(ms).getUTCDay();
+    if (dow !== 0 && dow !== 6 && !hs.has(formatMs(ms))) remaining -= 1;
+  }
+  return formatMs(ms);
+}
+
+export function weekStartIST(iso: string): string {
+  return addDays(iso, -(isoDow(iso) - 1));
+}
+
+export function weekEndIST(iso: string): string {
+  return addDays(weekStartIST(iso), 6);
+}
+
+/** Business days left in the Mon-Sun week, counting today if it is a business day. */
+export function businessDaysLeftInWeek(iso: string, holidays: Holiday[] = []): number {
+  return businessDaysBetween(iso, weekEndIST(iso), holidays) + (isBusinessDay(iso, holidays) ? 1 : 0);
+}
+=== lib\domain\channels.ts ===
+export const CHANNELS = [
+  "past_sponsors",
+  "other_fest",
+  "artist_linked",
+  "agency",
+  "csr",
+  "new_local",
+  "ipl_sports",
+  "institute",
+  "cold_database",
+  "inbound_referral",
+] as const;
+
+export type ChannelCode = (typeof CHANNELS)[number];
+
+export const CHANNEL_LABELS: Record<ChannelCode, string> = {
+  past_sponsors: "Past sponsors",
+  other_fest: "Other fest",
+  artist_linked: "Artist linked",
+  agency: "Agency",
+  csr: "CSR",
+  new_local: "New local",
+  ipl_sports: "IPL / sports",
+  institute: "Institute",
+  cold_database: "Cold database",
+  inbound_referral: "Inbound / referral",
+};
+
+export const WARM_CHANNELS: ReadonlySet<ChannelCode> = new Set([
+  "past_sponsors",
+  "other_fest",
+  "artist_linked",
+  "inbound_referral",
+  "institute",
+]);
+
+export function channelToInitiative(channel: ChannelCode): string {
+  if (channel === "artist_linked") return "bet-4";
+  if (
+    channel === "past_sponsors" ||
+    channel === "other_fest" ||
+    channel === "inbound_referral" ||
+    channel === "institute"
+  ) {
+    return "bet-3";
+  }
+  return "bet-5";
+}
+
+=== lib\domain\decisions.ts ===
+import type { GateStatus } from "../model/gates";
+import type { Badge } from "./initiatives";
+import { formatInr } from "./money";
+
+export type Severity = "high" | "medium" | "low";
+export type TaskDraft = { ownerId: string | null; brandId: string | null; title: string };
+export type Decision = {
+  id: string;
+  severity: Severity;
+  title: string;
+  evidence: string;
+  action: string;
+  tasksToCreate: TaskDraft[];
+};
+
+export type DecisionSnapshot = {
+  initiatives: { code: string; name: string; badge: Badge; reason: string }[];
+  coordinators: {
+    id: string;
+    name: string;
+    activeCount: number;
+    idleBdays: number;
+    outreachedThisWeek: number;
+    weeklyTarget: number;
+    bdaysElapsed: number;
+    bdaysInWeek: number;
+    ghosting: number;
+    engagedPool: number;
+  }[];
+  staleProspects: { brandId: string; company: string; ownerId: string; ownerName: string; amountInr: number; idleBdays: number; thresholdBdays: number }[];
+  overduePayments: { dealId: string; company: string; ownerId: string | null; amountInr: number; dueDate: string }[];
+  ownershipConflicts: { company: string; ownerIds: string[]; ownerNames: string[] }[];
+  gates: GateStatus[];
+};
+
+const RANK: Record<Severity, number> = { high: 0, medium: 1, low: 2 };
+
+export function buildDecisions(s: DecisionSnapshot): Decision[] {
+  const out: Decision[] = [];
+
+  for (const i of s.initiatives) {
+    if (i.badge !== "STOP" && i.badge !== "CHANGE" && i.badge !== "SCALE" && i.badge !== "BEHIND") continue;
+    const verb = { STOP: "Stop", CHANGE: "Change", SCALE: "Scale", BEHIND: "Catch up on" }[i.badge];
+    out.push({
+      id: `initiative-${i.code}`,
+      severity: i.badge === "STOP" || i.badge === "BEHIND" ? "high" : "medium",
+      title: `${verb} ${i.name} (${i.code})`,
+      evidence: i.reason,
+      action: i.badge === "SCALE" ? "Double the effort on this lane." : i.badge === "CHANGE" ? "Change the hook or the matching before spending more time." : i.badge === "STOP" ? "Stop this lane and move the hours to the best performing lane." : "Add a closer and review blockers at the next stand-up.",
+      tasksToCreate: [],
+    });
+  }
+
+  for (const c of s.coordinators) {
+    if (c.activeCount > 0 && c.idleBdays >= 3) {
+      out.push({
+        id: `idle-${c.id}`, severity: "high", title: `${c.name} has had no activity for ${c.idleBdays} business days`,
+        evidence: `${c.activeCount} companies in active statuses, last activity ${c.idleBdays} business days ago.`,
+        action: "Check in today and agree what moves this week.",
+        tasksToCreate: [{ ownerId: c.id, brandId: null, title: "Update your active companies and log today's activity" }],
+      });
+    }
+    const expected = c.bdaysInWeek > 0 ? (c.weeklyTarget * c.bdaysElapsed) / c.bdaysInWeek : 0;
+    if (c.weeklyTarget > 0 && c.bdaysElapsed > 0 && c.outreachedThisWeek < 0.5 * expected) {
+      out.push({
+        id: `pace-${c.id}`, severity: "medium", title: `${c.name} is below pace this week`,
+        evidence: `${c.outreachedThisWeek} outreached against ${expected.toFixed(1)} expected by now (target ${c.weeklyTarget}).`,
+        action: "Agree a catch-up plan and clear the queue first.",
+        tasksToCreate: [{ ownerId: c.id, brandId: null, title: `Reach your weekly target of ${c.weeklyTarget} outreaches` }],
+      });
+    }
+    if (c.engagedPool > 0 && c.ghosting / c.engagedPool > 0.25) {
+      out.push({
+        id: `ghost-${c.id}`, severity: "medium", title: `High ghosting share for ${c.name}`,
+        evidence: `${c.ghosting} of ${c.engagedPool} engaged companies are ghosting (${Math.round((100 * c.ghosting) / c.engagedPool)}%).`,
+        action: "Switch channel for these contacts: call instead of mail, or reach another person at the company.",
+        tasksToCreate: [{ ownerId: c.id, brandId: null, title: "Try a different channel on your ghosting companies" }],
+      });
+    }
+  }
+
+  const stale = s.staleProspects.filter((p) => p.idleBdays > p.thresholdBdays);
+  if (stale.length > 0) {
+    const total = stale.reduce((t, p) => t + p.amountInr, 0);
+    out.push({
+      id: "stale-prospects", severity: "high", title: `${stale.length} prospective companies are past their threshold`,
+      evidence: `${formatInr(total)} at risk: ${stale.slice(0, 5).map((p) => `${p.company} (${formatInr(p.amountInr)}, idle ${p.idleBdays} business days)`).join("; ")}.`,
+      action: "Nudge each one today, and the head calls the largest directly.",
+      tasksToCreate: stale.map((p) => ({ ownerId: p.ownerId, brandId: p.brandId, title: `Nudge ${p.company}: idle ${p.idleBdays} business days` })),
+    });
+  }
+
+  if (s.overduePayments.length > 0) {
+    const total = s.overduePayments.reduce((t, p) => t + p.amountInr, 0);
+    out.push({
+      id: "overdue-payments", severity: "high", title: `${s.overduePayments.length} payments are overdue`,
+      evidence: `${formatInr(total)} overdue: ${s.overduePayments.map((p) => `${p.company} (due ${p.dueDate})`).join("; ")}.`,
+      action: "Send a payment reminder with the invoice today.",
+      tasksToCreate: s.overduePayments.map((p) => ({ ownerId: p.ownerId, brandId: null, title: `Chase payment from ${p.company} (${formatInr(p.amountInr)})` })),
+    });
+  }
+
+  for (const k of s.ownershipConflicts) {
+    out.push({
+      id: `conflict-${k.company.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, severity: "low", title: `Two owners for ${k.company}`,
+      evidence: `${k.ownerNames.join(" and ")} both hold this company.`,
+      action: "Pick one owner and tell the other to drop it.",
+      tasksToCreate: k.ownerIds.map((id) => ({ ownerId: id, brandId: null, title: `Confirm who owns ${k.company}` })),
+    });
+  }
+
+  const missed = s.gates.find((g) => g.status === "BEHIND BASE");
+  if (missed) {
+    out.push({
+      id: "replan-gates", severity: "high", title: "Re-plan: move hours to bet-1 and bet-3",
+      evidence: `Signed ${formatInr(missed.actualInr)} at the ${missed.gateOn} gate, base line is ${formatInr(missed.baseInr)}.`,
+      action: "Move hours from the colder lanes to the deal desk and warm renewals.",
+      tasksToCreate: [],
+    });
+  }
+
+  return out.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
+}
+=== lib\domain\initiatives.ts ===
+import { dateNum, evalRule, ruleMetricNames, type Metrics, type RuleJson } from "./rules-engine";
+
+export const INITIATIVES = ["bet-1", "bet-2", "bet-3", "bet-4", "bet-5"] as const;
+export type InitiativeId = (typeof INITIATIVES)[number];
+
+export type Badge = "SCALE" | "CHANGE" | "STOP" | "BEHIND" | "HOLD" | "TOO EARLY";
+export type InitiativeRules = { scale: RuleJson | null; change: RuleJson | null; stop: RuleJson | null };
+export type BadgeResult = { badge: Badge; reason: string };
+
+export const BET1_SCALE_BY = "2026-12-11";
+
+function show(names: string[], metrics: Metrics, counts: Record<string, string>): string {
+  const parts = names
+    .filter((n) => n !== "today")
+    .map((n) => counts[n] ?? (metrics[n] === undefined ? `${n} unknown` : `${n} ${Number(metrics[n].toFixed(3))}`));
+  return parts.join(", ");
+}
+
+function minOutreach(rules: InitiativeRules): number | null {
+  const vals: number[] = [];
+  for (const r of [rules.scale, rules.change, rules.stop]) {
+    for (const c of r?.all ?? []) if (c.m === "outreached" && (c.op === ">=" || c.op === ">")) vals.push(c.v);
+  }
+  return vals.length ? Math.min(...vals) : null;
+}
+
+export function evaluateInitiative(
+  code: string,
+  rules: InitiativeRules,
+  metrics: Metrics,
+  counts: Record<string, string> = {},
+): BadgeResult {
+  const stop = evalRule(rules.stop, metrics);
+  if (stop.met) return { badge: "STOP", reason: `Stop rule met: ${show(ruleMetricNames(rules.stop), metrics, counts) || "date rule reached"}.` };
+  const change = evalRule(rules.change, metrics);
+  if (change.met) return { badge: "CHANGE", reason: `Change rule met: ${show(ruleMetricNames(rules.change), metrics, counts)}.` };
+  const scale = evalRule(rules.scale, metrics);
+  if (scale.met) return { badge: "SCALE", reason: `Scale rule met: ${show(ruleMetricNames(rules.scale), metrics, counts)}.` };
+
+  const today = metrics.today ?? 0;
+  if (code === "bet-1" && today > dateNum(BET1_SCALE_BY) && (metrics.negotiating_count ?? 0) < 5) {
+    return { badge: "BEHIND", reason: `Behind: ${metrics.negotiating_count ?? 0} negotiating, 5 needed by ${BET1_SCALE_BY}.` };
+  }
+  const need = minOutreach(rules);
+  const out = metrics.outreached;
+  if (need !== null && out !== undefined && out < need) {
+    return { badge: "TOO EARLY", reason: `Too early: ${out} outreached, rules need ${need}.` };
+  }
+  const unknown = [stop, change, scale].flatMap((r) => r.clauses.filter((c) => c.met === null).map((c) => c.clause.m));
+  const tail = unknown.length ? ` Insufficient data for: ${[...new Set(unknown)].join(", ")}.` : "";
+  const all = [...new Set([...ruleMetricNames(rules.scale), ...ruleMetricNames(rules.change), ...ruleMetricNames(rules.stop)])];
+  return { badge: "HOLD", reason: `No rule met: ${show(all, metrics, counts) || "no data yet"}.${tail}` };
+}
+=== lib\domain\money.ts ===
+const RUPEE = "\u20B9";
+
+function groupIndian(amount: number): string {
+  const digits = Math.abs(Math.round(amount)).toString();
+  if (digits.length <= 3) return digits;
+  const last3 = digits.slice(-3);
+  const rest = digits.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ",");
+  return `${rest},${last3}`;
+}
+
+export function formatInr(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined || Number.isNaN(amount)) return "-";
+  const sign = Math.round(amount) < 0 ? "-" : "";
+  return `${sign}${RUPEE}${groupIndian(amount)}`;
+}
+
+export function formatLakh(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined || Number.isNaN(amount)) return "-";
+  const sign = amount < 0 ? "-" : "";
+  return `${sign}${RUPEE}${(Math.abs(amount) / 100_000).toFixed(1)}L`;
+}
+
+export function parseInr(input: string): number | null {
+  const cleaned = input.replace(/[\u20B9,\s]/g, "").toLowerCase();
+  if (!cleaned) return null;
+  const lakh = cleaned.endsWith("l");
+  const value = Number(lakh ? cleaned.slice(0, -1) : cleaned);
+  if (!Number.isFinite(value)) return null;
+  return Math.round(lakh ? value * 100_000 : value);
+}
+=== lib\domain\rules-engine.ts ===
+export type RuleOp = ">=" | "<=" | ">" | "<" | "=";
+export type RuleClause = { m: string; op: RuleOp; v: number };
+export type RuleJson = { all: RuleClause[] };
+export type Metrics = Record<string, number | undefined>;
+
+export const RULE_METRICS = [
+  "outreached",
+  "response_rate",
+  "proposal_rate",
+  "prospective_or_better",
+  "signed_deals",
+  "negotiating_count",
+  "top5_max_idle_bdays",
+  "deals_idle_gt10_after_3_nudges",
+  "inkind_share_new",
+  "personalised_vs_template_ratio",
+  "today",
+] as const;
+
+const OPS: RuleOp[] = [">=", "<=", ">", "<", "="];
+
+export function isRuleJson(value: unknown): value is RuleJson {
+  if (!value || typeof value !== "object") return false;
+  const all = (value as { all?: unknown }).all;
+  if (!Array.isArray(all)) return false;
+  return all.every(
+    (clause) =>
+      clause &&
+      typeof clause === "object" &&
+      typeof (clause as RuleClause).m === "string" &&
+      typeof (clause as RuleClause).op === "string" &&
+      typeof (clause as RuleClause).v === "number",
+  );
+}
+
+export function validateRuleJson(value: unknown): string[] {
+  if (value === null) return [];
+  if (!isRuleJson(value)) return ["Rule must look like {\"all\": [{\"m\": metric, \"op\": op, \"v\": number}]}"];
+  const errors: string[] = [];
+  if (value.all.length === 0) errors.push("A rule needs at least one clause");
+  value.all.forEach((c, i) => {
+    if (!(RULE_METRICS as readonly string[]).includes(c.m)) errors.push(`Clause ${i + 1}: unknown metric "${c.m}"`);
+    if (!OPS.includes(c.op)) errors.push(`Clause ${i + 1}: unknown operator "${c.op}"`);
+    if (!Number.isFinite(c.v)) errors.push(`Clause ${i + 1}: value must be a finite number`);
+  });
+  return errors;
+}
+
+export function compare(op: RuleOp, a: number, b: number): boolean {
+  switch (op) {
+    case ">=": return a >= b;
+    case "<=": return a <= b;
+    case ">": return a > b;
+    case "<": return a < b;
+    default: return Math.abs(a - b) < 1e-9;
+  }
+}
+
+export type ClauseResult = { clause: RuleClause; value: number | undefined; met: boolean | null };
+export type RuleResult = { met: boolean | null; clauses: ClauseResult[] };
+
+export function evalRule(rule: RuleJson | null | undefined, metrics: Metrics): RuleResult {
+  if (!rule) return { met: false, clauses: [] };
+  const clauses = rule.all.map((clause): ClauseResult => {
+    const value = metrics[clause.m];
+    const ok = value === undefined || Number.isNaN(value) ? null : compare(clause.op, value, clause.v);
+    return { clause, value: ok === null ? undefined : value, met: ok };
+  });
+  if (clauses.some((c) => c.met === false)) return { met: false, clauses };
+  if (clauses.some((c) => c.met === null)) return { met: null, clauses };
+  return { met: true, clauses };
+}
+
+export function ruleMetricNames(rule: RuleJson | null | undefined): string[] {
+  return rule ? [...new Set(rule.all.map((c) => c.m))] : [];
+}
+
+export function dateNum(iso: string): number {
+  return Number(iso.replace(/-/g, ""));
+}
+
+export function clauseText(c: RuleClause): string {
+  return `${c.m} ${c.op} ${c.v}`;
+}
+=== lib\domain\status.ts ===
+export const STATUS_CODES = [
+  "to_contact",
+  "send_mail",
+  "slabs_sent",
+  "didnt_pick",
+  "contacted",
+  "ghosting",
+  "prospective",
+  "converted",
+  "rejected",
+  "left_company",
+  "wrong_number",
+] as const;
+
+export type StatusCode = (typeof STATUS_CODES)[number];
+
+export const STATUS_LABELS: Record<StatusCode, string> = {
+  to_contact: "To Contact",
+  send_mail: "Send Mail",
+  slabs_sent: "Slabs sent",
+  didnt_pick: "Didn't Pick",
+  contacted: "Contacted",
+  ghosting: "Ghosting",
+  prospective: "Prospective",
+  converted: "Converted",
+  rejected: "Rejected",
+  left_company: "Left the Company",
+  wrong_number: "Wrong number",
+};
+
+export const RESPONDED_STATUSES: StatusCode[] = [
+  "contacted",
+  "prospective",
+  "converted",
+  "rejected",
+];
+
+=== lib\mail\template.ts ===
+export const MAIL_TEMPLATE_VERSION = "2027-lineup";
+
+export function subject(company: string): string {
+  return `Saarang 2027 x ${company}: partnership opportunity`;
+}
+
+=== lib\model\assumptions.ts ===
+export type SegmentRates = { response: number; proposal_rate: number; sign_rate: number };
+
+export type ModelAssumptions = {
+  close_rate: { base: number; stretch: number };
+  warm: { base: SegmentRates; stretch: SegmentRates };
+  other: { base: SegmentRates; stretch: SegmentRates };
+  avg_new_deal_inr: number;
+  inkind_new: { base: number; stretch: number };
+  inkind_policy_scope: "all" | "new_only";
+  prefest_share: number;
+  stretch_warm_leads: number;
+  stretch_other_leads: number;
+  plan_start: string;
+  plan_end: string;
+  bundle_discount_start: string;
+  bundle_discount_stop: string;
+  prefest_due_date: string;
+  postfest_due_date: string;
+  kpi_window_start: string | null;
+  use_observed: boolean;
+};
+
+export const DEFAULT_ASSUMPTIONS: ModelAssumptions = {
+  close_rate: { base: 0.25, stretch: 0.4 },
+  warm: {
+    base: { response: 0.5, proposal_rate: 0.4, sign_rate: 0.5 },
+    stretch: { response: 0.6, proposal_rate: 0.5, sign_rate: 0.5 },
+  },
+  other: {
+    base: { response: 0.25, proposal_rate: 0.04, sign_rate: 0.5 },
+    stretch: { response: 0.25, proposal_rate: 0.08, sign_rate: 0.5 },
+  },
+  avg_new_deal_inr: 125000,
+  inkind_new: { base: 0.1, stretch: 0.05 },
+  inkind_policy_scope: "all",
+  prefest_share: 0.75,
+  stretch_warm_leads: 85,
+  stretch_other_leads: 42,
+  plan_start: "2026-11-30",
+  plan_end: "2027-01-05",
+  bundle_discount_start: "2026-12-14",
+  bundle_discount_stop: "2027-01-04",
+  prefest_due_date: "2027-01-05",
+  postfest_due_date: "2027-02-09",
+  kpi_window_start: null,
+  use_observed: false,
+};
+
+function isObj(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function merge<T>(defaults: T, raw: unknown): T {
+  if (isObj(defaults)) {
+    const src = isObj(raw) ? raw : {};
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(defaults)) out[key] = merge(defaults[key], src[key]);
+    return out as T;
+  }
+  if (raw === undefined) return defaults;
+  if (defaults === null) return (typeof raw === "string" || raw === null ? raw : defaults) as T;
+  if (typeof defaults === "number") {
+    return (typeof raw === "number" && Number.isFinite(raw) ? raw : defaults) as T;
+  }
+  return (typeof raw === typeof defaults ? raw : defaults) as T;
+}
+
+export function resolveAssumptions(raw: unknown): ModelAssumptions {
+  const merged = merge(DEFAULT_ASSUMPTIONS, raw);
+  if (merged.inkind_policy_scope !== "all" && merged.inkind_policy_scope !== "new_only") {
+    merged.inkind_policy_scope = "all";
+  }
+  return merged;
+}
+=== lib\model\attribution.ts ===
+import { DEFAULT_SETTINGS, floorCash, project, scenarioInput, segmentDeals, type ModelSettings, type PlanState } from "./projection";
+
+export type AttributionRow = { bet: string; label: string; cashOverFloor: number };
+
+export type Attribution = {
+  rows: AttributionRow[];
+  floor: number;
+  stretchCash: number;
+  sumOverFloor: number;
+  reconciles: boolean;
+};
+
+export function emptyAttribution(): AttributionRow[] {
+  return [];
+}
+
+export function attributeStretch(state: PlanState, settings: ModelSettings = DEFAULT_SETTINGS): Attribution {
+  const input = scenarioInput(state, "stretch", settings);
+  const res = project(input);
+  const obs = state.observedInkindShare;
+  const p = settings.prefestShare;
+  const st = settings.stretch;
+  const avg = settings.avgNewDeal;
+  const keep = 1 - obs;
+  const perLead = (r: { response: number; proposalRate: number; signRate: number }) => r.response * r.proposalRate * r.signRate;
+
+  const bet1 = state.openProspectInr * st.closeRate * keep * p;
+  const inkindBase = settings.inkindScope === "all" ? res.signed : res.signed - state.signedToDate;
+  const bet2 = inkindBase * (obs - st.inkindShare) * p;
+  const bet3Leads = Math.max(0, settings.stretchWarmLeads - settings.artistLeads);
+  const bet3 = bet3Leads * perLead(st.warm) * avg * keep * p;
+  const bet4 = settings.artistLeads * perLead(st.warm) * avg * keep * p;
+  const bet5 = segmentDeals({ leads: settings.stretchOtherLeads, ...st.other }) * avg * keep * p;
+
+  const rows: AttributionRow[] = [
+    { bet: "bet-1", label: "Deal desk", cashOverFloor: Math.round(bet1) },
+    { bet: "bet-2", label: "Cash-first terms", cashOverFloor: Math.round(bet2) },
+    { bet: "bet-3", label: "Warm renewals", cashOverFloor: Math.round(bet3) },
+    { bet: "bet-4", label: "Lineup-triggered pitch", cashOverFloor: Math.round(bet4) },
+    { bet: "bet-5", label: "Capped cold test", cashOverFloor: Math.round(bet5) },
+  ];
+  const sum = rows.reduce((t, r) => t + r.cashOverFloor, 0);
+  const floor = floorCash(input);
+  return { rows, floor, stretchCash: res.cashBeforeFest, sumOverFloor: sum, reconciles: Math.abs(floor + sum - res.cashBeforeFest) <= 1000 };
+}

@@ -1,0 +1,1068 @@
+﻿## SHEET: Read me | rows=1000 | cols=2
+topic | description
+Context | SPONSOR ACQUISITION DATA
+Source guidance | CampusFest 2025 is a fictional two-day event on 12ΓÇô13 April 2025. Records cover 15 JanuaryΓÇô20 April 2025. Brands, contacts and outreach are synthetic. Beardo is an illustrative case label, not a claim about a real business.
+Source guidance | Build around useful sponsor acquisition questions. Source records describe the target brands, their contacts, acquisition campaigns, outreach and responses, qualification changes, opportunities and partner activations. Choose your own metrics and interface. Partnership outcomes provide downstream context for marketing activity.
+
+## SHEET: Field guide | rows=1000 | cols=4
+source_table | field | data_type | meaning
+event.csv | event_name | text | Fictional event display name.
+event.csv | history_start | date | First covered snapshot date.
+event.csv | history_end | date | Last covered snapshot date.
+event.csv | event_starts_at | datetime | Planned event opening timestamp in IST.
+event.csv | event_ends_at | datetime | Planned event closing timestamp in IST.
+event.csv | timezone | text | Timezone for selected-day snapshots.
+event.csv | currency | text | Currency used for marketing spend and reported sponsor values.
+event.csv | fictional | boolean | All source records are synthetic.
+targets.csv | effective_at | datetime | This full version of the targets takes effect at this timestamp.
+targets.csv | qualified_brands_goal | number | Target brands whose latest qualification is qualified.
+targets.csv | confirmed_partnerships_goal | number | Target opportunities whose latest stage is partner_confirmed.
+targets.csv | target_version | text | Readable label for the dated target plan.
+brands.csv | brand_name | text | Readable fictional brand label. Join with brand_id, since labels are not primary keys.
+brands.csv | industry | text | Broad business category of the fictional brand.
+brands.csv | owner_name | text | Readable name of the responsible festival team member.
+brands.csv | created_at | datetime | First existence of this static source record, in ISO 8601 India time.
+brands.csv | brand_id | text | Stable sponsor brand identity; shared across contacts, outreach and opportunities.
+brands.csv | owner_id | text | Stable team identity; readable owner_name is supplied in the same row where applicable.
+contacts.csv | contact_name | text | Readable fictional person name. People with the same name may have different contact_id values.
+contacts.csv | job_title | text | Fictional contact role at the brand.
+contacts.csv | brand_name | text | Readable fictional brand label. Join with brand_id, since labels are not primary keys.
+contacts.csv | created_at | datetime | First existence of this static source record, in ISO 8601 India time.
+contacts.csv | contact_id | text | Stable person identity. One brand can have several people.
+contacts.csv | brand_id | text | Stable sponsor brand identity; shared across contacts, outreach and opportunities.
+sponsor_campaigns.csv | campaign_name | text | Readable sponsorship acquisition campaign label.
+sponsor_campaigns.csv | channel | text | Acquisition channel: email, linkedin, introduction or web_inbound.
+sponsor_campaigns.csv | objective | text | Business aim of this acquisition campaign.
+sponsor_campaigns.csv | audience | text | Intended audience for the campaign.
+sponsor_campaigns.csv | owner_name | text | Readable name of the responsible festival team member.
+sponsor_campaigns.csv | planned_start_at | datetime | Planned start time, not evidence that an outreach or outcome occurred.
+sponsor_campaigns.csv | planned_end_at | datetime | Planned end time, not a realized result.
+sponsor_campaigns.csv | created_at | datetime | First existence of this static source record, in ISO 8601 India time.
+sponsor_campaigns.csv | sponsor_campaign_id | text | Stable sponsorship acquisition campaign identity (SC prefix); distinct from attendee campaign IDs.
+sponsor_campaigns.csv | owner_id | text | Stable team identity; readable owner_name is supplied in the same row where applicable.
+sponsor_interactions.csv | brand_name | text | Readable fictional brand label. Join with brand_id, since labels are not primary keys.
+sponsor_interactions.csv | contact_name | text | Readable fictional person name. People with the same name may have different contact_id values.
+sponsor_interactions.csv | campaign_name | text | Readable sponsorship acquisition campaign label.
+sponsor_interactions.csv | channel | text | Acquisition channel: email, linkedin, introduction or web_inbound.
+sponsor_interactions.csv | event_type | text | One event: outreach_sent, delivered, replied, meeting_booked, meeting_held, opt_out, introduction_received or web_inbound.
+sponsor_interactions.csv | outcome | text | Recorded result: sent/delivered; replied classification positive/neutral/not_interested/wrong_contact; scheduled/attended; do_not_contact; introduced/interest_submitted.
+sponsor_interactions.csv | summary | text | Fictional source note describing the observed event and its limit.
+sponsor_interactions.csv | occurred_at | datetime | Actual event timestamp in ISO 8601 India time. Include only when <= selected cutoff.
+sponsor_interactions.csv | interaction_id | text | Stable event identity. Identical copies with this same ID are import retries.
+sponsor_interactions.csv | attempt_id | text | One source touch/attempt and its follow-on events. A repeat outreach uses a new attempt ID.
+sponsor_interactions.csv | origin_interaction_id | text | ID of the root source-touch event for a delivery/response/meeting/opt-out. Blank on the root event itself.
+sponsor_interactions.csv | brand_id | text | Stable sponsor brand identity; shared across contacts, outreach and opportunities.
+sponsor_interactions.csv | contact_id | text | Stable person identity. One brand can have several people.
+sponsor_interactions.csv | sponsor_campaign_id | text | Stable sponsorship acquisition campaign identity (SC prefix); distinct from attendee campaign IDs.
+sponsor_interactions.csv | owner_id | text | Stable team identity; readable owner_name is supplied in the same row where applicable.
+brand_qualification_history.csv | brand_name | text | Readable fictional brand label. Join with brand_id, since labels are not primary keys.
+brand_qualification_history.csv | qualification_status | text | Current assessed brand state at effective_at: unreviewed, engaged, qualified, unqualified or dormant.
+brand_qualification_history.csv | reason | text | Source explanation of the assessment; contact interest alone need not imply brand qualification.
+brand_qualification_history.csv | source_campaign_name | text | Readable label for the acquisition source underlying this assessment.
+brand_qualification_history.csv | effective_at | datetime | When this full-state version became effective. Use latest version <= selected India end-of-day; do not sum history states.
+brand_qualification_history.csv | history_id | text | Stable version identity. Same ID with an identical payload is an import retry.
+brand_qualification_history.csv | brand_id | text | Stable sponsor brand identity; shared across contacts, outreach and opportunities.
+brand_qualification_history.csv | sponsor_campaign_id | text | Stable sponsorship acquisition campaign identity (SC prefix); distinct from attendee campaign IDs.
+opportunities.csv | opportunity_name | text | Readable opportunity label. A brand may have several distinct opportunities.
+opportunities.csv | brand_name | text | Readable fictional brand label. Join with brand_id, since labels are not primary keys.
+opportunities.csv | primary_contact_name | text | Readable label for the primary contact attached at opportunity creation.
+opportunities.csv | originating_campaign_name | text | Acquisition campaign recorded as the source at opportunity creation; later channel overlap does not overwrite it.
+opportunities.csv | support_type | text | Proposed sponsorship consideration: cash or in_kind. This is not bank-receipt evidence.
+opportunities.csv | created_at | datetime | First existence of this static source record, in ISO 8601 India time.
+opportunities.csv | opportunity_id | text | Stable identity of one potential partnership, distinct from the brand.
+opportunities.csv | brand_id | text | Stable sponsor brand identity; shared across contacts, outreach and opportunities.
+opportunities.csv | primary_contact_id | text | Stable person ID for the opportunity primary contact; joins contacts.contact_id.
+opportunities.csv | sponsor_campaign_id | text | Stable sponsorship acquisition campaign identity (SC prefix); distinct from attendee campaign IDs.
+opportunity_history.csv | opportunity_name | text | Readable opportunity label. A brand may have several distinct opportunities.
+opportunity_history.csv | brand_name | text | Readable fictional brand label. Join with brand_id, since labels are not primary keys.
+opportunity_history.csv | stage | text | Full-state opportunity stage: prospecting, contacted, proposal_sent, negotiating, partner_confirmed, lost or withdrawn.
+opportunity_history.csv | proposed_value_inr | number | Optional face-value estimate in whole INR for this opportunity, including agreed in-kind value where relevant. No tax or cash receipt model.
+opportunity_history.csv | confirmed_value_inr | number | Optional simple confirmed partnership value at this version. Zero unless stage is partner_confirmed; not cash collected.
+opportunity_history.csv | owner_name | text | Readable name of the responsible festival team member.
+opportunity_history.csv | effective_at | datetime | When this full-state version became effective. Use latest version <= selected India end-of-day; do not sum history states.
+opportunity_history.csv | history_id | text | Stable version identity. Same ID with an identical payload is an import retry.
+opportunity_history.csv | opportunity_id | text | Stable identity of one potential partnership, distinct from the brand.
+opportunity_history.csv | brand_id | text | Stable sponsor brand identity; shared across contacts, outreach and opportunities.
+opportunity_history.csv | owner_id | text | Stable team identity; readable owner_name is supplied in the same row where applicable.
+sponsor_activations.csv | brand_name | text | Readable fictional brand label. Join with brand_id, since labels are not primary keys.
+sponsor_activations.csv | opportunity_name | text | Readable opportunity label. A brand may have several distinct opportunities.
+sponsor_activations.csv | attendee_campaign_name | text | Readable attendee acquisition campaign label from the separate attendee dataset.
+sponsor_activations.csv | activation_note | text | Source description of the sponsor-to-attendee-campaign association and its causal limit.
+sponsor_activations.csv | linked_at | datetime | When the activation association became effective, in ISO 8601 India time.
+sponsor_activations.csv | activation_id | text | Stable identity of this cross-dataset association.
+sponsor_activations.csv | brand_id | text | Stable sponsor brand identity; shared across contacts, outreach and opportunities.
+sponsor_activations.csv | opportunity_id | text | Stable identity of one potential partnership, distinct from the brand.
+sponsor_activations.csv | attendee_campaign_id | text | Stable C-prefixed campaign identity to join the attendee acquisition dataset.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## SHEET: Event | rows=1000 | cols=8
+event_name | history_start | history_end | event_starts_at | event_ends_at | timezone | currency | fictional
+CampusFest 2025 | 2025-01-15T00:00:00.000Z | 2025-04-20T00:00:00.000Z | 2025-04-12T10:00:00.000Z | 2025-04-13T20:00:00.000Z | Asia/Kolkata | INR | true
+
+
+
+## SHEET: Targets | rows=1000 | cols=4
+effective_at | qualified_brands_goal | confirmed_partnerships_goal | target_version
+2025-01-15T09:00:00.000Z | 40 | 20 | Sponsor launch plan
+2025-03-15T09:00:00.000Z | 55 | 28 | Sponsor revised plan
+
+
+## SHEET: Brands | rows=1000 | cols=6
+brand_name | industry | owner_name | created_at | brand_id | owner_id
+Bramble Pantry | Consumer products | Kabir Shah | 2025-02-27T08:00:00.000Z | A017 | T02
+Indigo Wellness | Mobility | Kabir Shah | 2025-03-14T08:00:00.000Z | A094 | T02
+Pebble Works | Education | Nisha Rao | 2025-02-21T08:00:00.000Z | A166 | T05
+
+## SHEET: Sponsor contacts | rows=1000 | cols=6
+contact_name | job_title | brand_name | created_at | contact_id | brand_id
+Kiran Jain | Brand Marketing Lead | Daybreak Active | 2025-02-25T08:20:00.000Z | SCON080 | A040
+Rohan Gupta | Partnerships Manager | Bramble Threads | 2025-02-09T08:15:00.000Z | SCON049 | A025
+Yash Patel | Partnerships Manager | Indigo Active | 2025-02-14T08:15:00.000Z | SCON179 | A090
+
+## SHEET: Sponsor campaigns | rows=1000 | cols=10
+campaign_name | channel | objective | audience | owner_name | planned_start_at | planned_end_at | created_at | sponsor_campaign_id | owner_id
+Brand Discovery Email | email | Start conversations with relevant consumer brands | Uncontacted consumer-brand marketing teams | Kabir Shah | 2025-01-20T09:00:00.000Z | 2025-04-10T18:00:00.000Z | 2025-01-15T08:00:00.000Z | SC01 | T02
+Warm Partner Introductions | introduction | Convert trusted introductions into qualified sponsor conversations | Brands introduced by alumni and existing partners | Riya Kapoor | 2025-01-20T09:00:00.000Z | 2025-04-10T18:00:00.000Z | 2025-01-15T08:00:00.000Z | SC02 | T01
+Brand Leader LinkedIn | linkedin | Reach partnership decision makers and validate interest | Marketing and partnerships leaders | Riya Kapoor | 2025-01-20T09:00:00.000Z | 2025-04-10T18:00:00.000Z | 2025-01-15T08:00:00.000Z | SC03 | T01
+
+## SHEET: Sponsor interactions | rows=1000 | cols=15
+brand_name | contact_name | campaign_name | channel | event_type | outcome | summary | occurred_at | interaction_id | attempt_id | origin_interaction_id | brand_id | contact_id | sponsor_campaign_id | owner_id
+Kindred Wellness | Ishaan Sen | Brand Discovery Email | email | outreach_sent | sent | Initial sponsorship conversation recorded for this contact. | 2025-03-06T10:00:00.000Z | SI00634 | SA0239 |  | A114 | SCON204 | SC01 | T02
+Kindred Studio | Zoya Rao | Brand Discovery Email | email | delivered | delivered | Follow-up outreach delivery confirmed. | 2025-01-28T10:05:00.000Z | SI00606 | SA0226 | SI00605 | A108 | SCON198 | SC01 | T02
+Glow Collective | Aanya Nair | Brand Discovery Email | email | outreach_sent | sent | Follow-up attempt in the same sponsorship conversation. | 2025-03-24T10:00:00.000Z | SI00393 | SA0127 |  | A073 | SCON145 | SC01 | T02
+
+## SHEET: Brand qualification | rows=1000 | cols=8
+brand_name | qualification_status | reason | source_campaign_name | effective_at | history_id | brand_id | sponsor_campaign_id
+Lumen Living | dormant | No contact response recorded after repeated outreach. | Brand Discovery Email | 2025-03-17T18:00:00.000Z | BQ0296 | A122 | SC01
+Glow Living | engaged | A contact responded; response alone does not establish brand fit. | Brand Discovery Email | 2025-03-15T11:20:00.000Z | BQ0194 | A072 | SC01
+Pebble Threads | unreviewed | Brand added to sponsorship research; fit has not been assessed. | Creator Network Referrals | 2025-02-14T08:30:00.000Z | BQ0396 | A165 | SC05
+
+## SHEET: Partner opportunities | rows=1000 | cols=10
+opportunity_name | brand_name | primary_contact_name | originating_campaign_name | support_type | created_at | opportunity_id | brand_id | primary_contact_id | sponsor_campaign_id
+Daybreak Collective festival partnership | Daybreak Collective | Rohan Jain | Past Conversation Revival | cash | 2025-01-23T09:00:00.000Z | O044 | A043 | SCON085 | SC06
+Mosaic Mobility festival partnership | Mosaic Mobility | Diya Bhat | Partner Interest Form | cash | 2025-03-20T09:00:00.000Z | O004 | A003 | SCON005 | SC04
+Evergreen Pantry festival partnership | Evergreen Pantry | Anika Kapoor | Brand Discovery Email | cash | 2025-02-20T09:00:00.000Z | O048 | A047 | SCON093 | SC01
+
+## SHEET: Opportunity history | rows=1000 | cols=11
+opportunity_name | brand_name | stage | proposed_value_inr | confirmed_value_inr | owner_name | effective_at | history_id | opportunity_id | brand_id | owner_id
+Cedar Works festival partnership | Cedar Works | prospecting | 55000 | 0 | Meera Iyer | 2025-02-04T12:00:00.000Z | OH00162 | O037 | A036 | T03
+Cedar Threads festival partnership | Cedar Threads | contacted | 40000 | 0 | Riya Kapoor | 2025-01-31T12:00:00.000Z | OH00161 | O036 | A035 | T01
+Evergreen Collective festival partnership | Evergreen Collective | negotiating | 135000 | 0 | Riya Kapoor | 2025-02-13T12:00:00.000Z | OH00217 | O054 | A053 | T01
+
+## SHEET: Sponsor activations | rows=1000 | cols=9
+brand_name | opportunity_name | attendee_campaign_name | activation_note | linked_at | activation_id | brand_id | opportunity_id | attendee_campaign_id
+Beardo | Beardo festival partnership | Creator Partners | Sponsor-supported attendee campaign activation. This link records an association; it does not establish incremental visitor impact. | 2025-03-10T12:00:00.000Z | L001 | A001 | O001 | C03
+Mosaic Mobility | Mosaic Mobility festival partnership | College Partnerships | Sponsor-supported attendee campaign activation. This link records an association; it does not establish incremental visitor impact. | 2025-04-03T12:00:00.000Z | L002 | A003 | O004 | C04
+Maple Devices | Maple Devices festival partnership | Community Groups | Sponsor-supported attendee campaign activation. This link records an association; it does not establish incremental visitor impact. | 2025-03-02T12:00:00.000Z | L003 | A006 | O007 | C07
+

@@ -1,3 +1,8 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useTransition } from "react";
+
 const EVENTS = [
   { id: "saarang-2027", label: "Saarang 2027" },
   { id: "campusfest-2025-work", label: "CampusFest work" },
@@ -5,19 +10,34 @@ const EVENTS = [
 ] as const;
 
 export function EventSwitch(props: { eventId: string }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  async function choose(id: string) {
+    if (id === props.eventId || pending) return;
+    const res = await fetch("/api/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventId: id }),
+    });
+    if (res.ok) startTransition(() => router.refresh());
+  }
+
   return (
-    <div className="flex flex-wrap items-center gap-2 text-sm">
+    <div className="flex flex-wrap items-center gap-2 text-sm" role="group" aria-label="Dataset">
       {EVENTS.map((event) => (
-        <span
+        <button
           key={event.id}
-          className={
-            event.id === props.eventId
-              ? "rounded-full border border-accent px-3 py-1 text-accent"
-              : "rounded-full border border-border px-3 py-1 text-muted"
-          }
+          type="button"
+          aria-pressed={event.id === props.eventId}
+          disabled={pending}
+          onClick={() => void choose(event.id)}
+          className={`rounded-full border px-3 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${
+            event.id === props.eventId ? "border-accent text-accent" : "border-border text-muted hover:text-foreground"
+          }`}
         >
           {event.label}
-        </span>
+        </button>
       ))}
       {props.eventId === "campusfest-2025" ? (
         <span className="rounded border border-approx/40 bg-approx/10 px-2 py-1 text-xs text-approx">

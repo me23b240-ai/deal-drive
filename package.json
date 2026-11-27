@@ -6,7 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "verify": "tsx scripts/verify.ts",
+    "seed:campusfest": "tsx scripts/seed-campusfest.ts",
+    "seed:saarang": "tsx scripts/seed-saarang.ts",
+    "test:chat": "tsx scripts/test-chat.ts",
+    "verify:saarang": "tsx scripts/verify-saarang.ts",
+    "verify:queries": "tsx scripts/verify-queries.ts",
+    "verify:crm": "tsx scripts/verify-crm.ts",
+    "verify:crm-detail": "tsx scripts/verify-crm-detail.ts"
   },
   "dependencies": {
     "@google/genai": "^3.6.1",

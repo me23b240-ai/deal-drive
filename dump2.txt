@@ -1,0 +1,379 @@
+﻿=== app\layout.tsx ===
+import type { Metadata } from "next";
+import type { ReactNode } from "react";
+import { Inter } from "next/font/google";
+import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
+
+export const metadata: Metadata = {
+  title: "Deal Drive",
+  description: "Sponsorship command center for Saarang 2027",
+};
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="en" className={`${inter.variable} h-full antialiased`}>
+      <body className={`${inter.className} min-h-full bg-background text-foreground`}>
+        {children}
+      </body>
+    </html>
+  );
+}
+=== app\globals.css ===
+@import "tailwindcss";
+
+:root {
+  --background: #0d1013;
+  --card: #15191d;
+  --border: #2a2f35;
+  --foreground: #e8ecef;
+  --muted: #8b949e;
+  --accent: #2dd4bf;
+  --prospective: #7aa2ff;
+  --approx: #f5a524;
+  --danger: #f87171;
+  --success: #34d399;
+  --radius: 16px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-prospective: var(--prospective);
+  --color-approx: var(--approx);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --font-sans: var(--font-inter);
+  --radius-card: var(--radius);
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-inter), Inter, system-ui, sans-serif;
+}
+
+=== components\shell\Header.tsx ===
+import { EventSwitch } from "@/components/shell/EventSwitch";
+import { MemberPicker } from "@/components/shell/MemberPicker";
+import { RoleToggle } from "@/components/shell/RoleToggle";
+import { getCtx } from "@/lib/db/queries/ctx";
+import { coordinatorsOf, listTeam } from "@/lib/db/queries/team";
+import type { DemoRole } from "@/lib/session";
+
+export async function Header(props: { role: DemoRole; eventId?: string; memberId?: string | null }) {
+  const ctx = await getCtx(props.role);
+  const coordinators =
+    props.role === "coordinator" ? coordinatorsOf(await listTeam(ctx.eventId).catch(() => [])) : [];
+
+  return (
+    <>
+      <header className="flex min-h-11 flex-wrap items-center justify-between gap-4 border-b border-border px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-semibold tracking-wide text-accent">Deal Drive</span>
+          <EventSwitch eventId={ctx.eventId} />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {coordinators.length > 0 ? (
+            <MemberPicker
+              members={coordinators.map((m) => ({ id: m.id, name: m.name }))}
+              memberId={ctx.memberId}
+            />
+          ) : null}
+          <RoleToggle role={props.role} />
+        </div>
+      </header>
+      {ctx.isLocked ? (
+        <div className="border-b border-approx/40 bg-approx/10 px-4 py-2 text-sm text-approx">
+          Locked original dataset: read-only. Switch to CampusFest work to edit a copy.
+        </div>
+      ) : null}
+    </>
+  );
+}
+=== components\shell\MemberPicker.tsx ===
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useTransition } from "react";
+
+export function MemberPicker(props: { members: { id: string; name: string }[]; memberId: string | null }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  async function choose(id: string) {
+    const res = await fetch("/api/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memberId: id }),
+    });
+    if (res.ok) startTransition(() => router.refresh());
+  }
+
+  return (
+    <label className="flex items-center gap-2 text-sm text-muted">
+      <span>Coordinator</span>
+      <select
+        value={props.memberId ?? ""}
+        disabled={pending}
+        onChange={(event) => void choose(event.target.value)}
+        className="h-9 rounded-lg border border-border bg-card px-2 text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+      >
+        {props.members.map((member) => (
+          <option key={member.id} value={member.id}>
+            {member.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+=== app\head\page.tsx ===
+import { Header } from "@/components/shell/Header";
+import { getSession } from "@/lib/session";
+import { OverviewTab } from "./_tabs/overview";
+
+export default async function HeadPage() {
+  const session = await getSession();
+  return (
+    <div className="min-h-full">
+      <Header role="head" eventId={session.eventId} memberId={session.memberId} />
+      <main className="p-6">
+        <OverviewTab />
+      </main>
+    </div>
+  );
+}
+
+=== app\head\_tabs\benchmark.tsx ===
+export function BenchmarkTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">benchmark</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\data-lab.tsx ===
+export function DataLabTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">data lab</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\deal-desk.tsx ===
+export function DealDeskTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">deal desk</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\eod.tsx ===
+export function EodTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">eod</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\initiatives.tsx ===
+export function InitiativesTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">initiatives</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\inventory.tsx ===
+export function InventoryTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">inventory</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\overview.tsx ===
+export function OverviewTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">Overview</h1>
+      <p className="mt-2 text-sm text-muted">Head tabs and live KPIs land in later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\plan.tsx ===
+export function PlanTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">plan</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\risks.tsx ===
+export function RisksTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">risks</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\settings.tsx ===
+export function SettingsTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">settings</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\team.tsx ===
+export function TeamTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">team</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== components\head\DealDesk.tsx ===
+export function DealDesk() {
+  return null;
+}
+
+=== components\head\DecisionsList.tsx ===
+export function DecisionsList() {
+  return null;
+}
+
+=== components\head\FunnelChart.tsx ===
+export function FunnelChart() {
+  return null;
+}
+
+=== components\head\GatesChart.tsx ===
+export function GatesChart() {
+  return null;
+}
+
+=== components\head\InitiativeCards.tsx ===
+export function InitiativeCards() {
+  return null;
+}
+
+=== components\head\KpiCards.tsx ===
+export function KpiCards() {
+  return null;
+}
+
+=== components\head\LeadSupply.tsx ===
+export function LeadSupply() {
+  return null;
+}
+
+=== components\head\ModelTable.tsx ===
+export function ModelTable() {
+  return null;
+}
+
+=== components\head\TeamTable.tsx ===
+export function TeamTable() {
+  return null;
+}
+
+=== app\api\session\route.ts ===
+import { cookies } from "next/headers";
+import { z } from "zod";
+import { EVENT_COOKIE, MEMBER_COOKIE, ROLE_COOKIE } from "@/lib/session";
+
+const bodySchema = z.object({
+  role: z.enum(["head", "coordinator"]).optional(),
+  eventId: z.enum(["saarang-2027", "campusfest-2025-work", "campusfest-2025"]).optional(),
+  memberId: z.string().min(1).nullable().optional(),
+});
+
+const OPTIONS = { path: "/", maxAge: 60 * 60 * 24 * 30, sameSite: "lax" as const, httpOnly: true };
+
+export async function POST(request: Request) {
+  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return Response.json({ ok: false, error: "Invalid body" }, { status: 400 });
+  const { role, eventId, memberId } = parsed.data;
+  const store = await cookies();
+  if (role) store.set(ROLE_COOKIE, role, OPTIONS);
+  if (eventId) store.set(EVENT_COOKIE, eventId, OPTIONS);
+  if (memberId === null) store.delete(MEMBER_COOKIE);
+  else if (memberId) store.set(MEMBER_COOKIE, memberId, OPTIONS);
+  return Response.json({ ok: true });
+}
+=== components\ui\button.tsx ===
+import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
+import { cn } from "@/lib/utils";
+
+const buttonVariants = cva(
+  "inline-flex items-center justify-center gap-2 rounded-[16px] text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default: "bg-accent text-background hover:bg-accent/90",
+        outline: "border border-border bg-card hover:bg-border/40",
+        ghost: "hover:bg-border/30",
+        danger: "bg-danger text-background",
+      },
+      size: {
+        default: "h-11 px-4",
+        sm: "h-9 px-3",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  },
+);
+
+export function Button({
+  className,
+  variant,
+  size,
+  asChild = false,
+  ...props
+}: React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot : "button";
+  return <Comp className={cn(buttonVariants({ variant, size, className }))} {...props} />;
+}
+

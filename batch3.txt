@@ -1,0 +1,357 @@
+﻿=== app\coordinator\page.tsx ===
+import { Header } from "@/components/shell/Header";
+import { getSession } from "@/lib/session";
+
+
+export default async function CoordinatorPage() {
+  const session = await getSession();
+  return (
+    <div className="min-h-full">
+      <Header role="coordinator" eventId={session.eventId} memberId={session.memberId} />
+      <main className="grid gap-4 p-6 lg:grid-cols-[minmax(0,4fr)_minmax(280px,1fr)]">
+        <section className="rounded-[16px] border border-border bg-card p-6">
+          <h1 className="text-lg font-semibold">Coordinator CRM</h1>
+          <p className="mt-2 text-sm text-muted">Company table, deal desk, drafts, and import land in later phases.</p>
+        </section>
+        <aside className="rounded-[16px] border border-border bg-card p-6">
+          <h2 className="text-sm font-semibold">To-do and assistant</h2>
+          <p className="mt-2 text-sm text-muted">Needs-update, tasks, and chat land in later phases.</p>
+        </aside>
+      </main>
+    </div>
+  );
+}
+
+=== app\head\page.tsx ===
+import { Header } from "@/components/shell/Header";
+import { getSession } from "@/lib/session";
+import { OverviewTab } from "./_tabs/overview";
+
+export default async function HeadPage() {
+  const session = await getSession();
+  return (
+    <div className="min-h-full">
+      <Header role="head" eventId={session.eventId} memberId={session.memberId} />
+      <main className="p-6">
+        <OverviewTab />
+      </main>
+    </div>
+  );
+}
+
+=== components\shell\Header.tsx ===
+import { EventSwitch } from "@/components/shell/EventSwitch";
+import { MemberPicker } from "@/components/shell/MemberPicker";
+import { RoleToggle } from "@/components/shell/RoleToggle";
+import { getCtx } from "@/lib/db/queries/ctx";
+import { coordinatorsOf, listTeam } from "@/lib/db/queries/team";
+import type { DemoRole } from "@/lib/session";
+
+export async function Header(props: { role: DemoRole; eventId?: string; memberId?: string | null }) {
+  const ctx = await getCtx(props.role);
+  const coordinators =
+    props.role === "coordinator" ? coordinatorsOf(await listTeam(ctx.eventId).catch(() => [])) : [];
+
+  return (
+    <>
+      <header className="flex min-h-11 flex-wrap items-center justify-between gap-4 border-b border-border px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-semibold tracking-wide text-accent">Deal Drive</span>
+          <EventSwitch eventId={ctx.eventId} />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {coordinators.length > 0 ? (
+            <MemberPicker
+              members={coordinators.map((m) => ({ id: m.id, name: m.name }))}
+              memberId={ctx.memberId}
+            />
+          ) : null}
+          <RoleToggle role={props.role} />
+        </div>
+      </header>
+      {ctx.isLocked ? (
+        <div className="border-b border-approx/40 bg-approx/10 px-4 py-2 text-sm text-approx">
+          Locked original dataset: read-only. Switch to CampusFest work to edit a copy.
+        </div>
+      ) : null}
+    </>
+  );
+}
+=== app\globals.css ===
+@import "tailwindcss";
+
+:root {
+  --background: #0d1013;
+  --card: #15191d;
+  --border: #2a2f35;
+  --foreground: #e8ecef;
+  --muted: #8b949e;
+  --accent: #2dd4bf;
+  --prospective: #7aa2ff;
+  --approx: #f5a524;
+  --danger: #f87171;
+  --success: #34d399;
+  --radius: 16px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-prospective: var(--prospective);
+  --color-approx: var(--approx);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --font-sans: var(--font-inter);
+  --radius-card: var(--radius);
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-inter), Inter, system-ui, sans-serif;
+}
+
+=== package.json ===
+{
+  "name": "deal-drive",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "verify": "tsx scripts/verify.ts",
+    "seed:campusfest": "tsx scripts/seed-campusfest.ts",
+    "seed:saarang": "tsx scripts/seed-saarang.ts",
+    "test:chat": "tsx scripts/test-chat.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^3.6.1",
+    "@radix-ui/react-slot": "^1.5.0",
+    "@supabase/supabase-js": "^2.119.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
+    "date-fns-tz": "^3.2.0",
+    "dotenv": "^18.0.10",
+    "exceljs": "^4.4.0",
+    "lucide-react": "^1.81.0",
+    "next": "16.4.6",
+    "papaparse": "^5.7.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "recharts": "^3.11.1",
+    "tailwind-merge": "^3.7.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "4.3.3",
+    "@types/node": "^24.19.4",
+    "@types/papaparse": "^5.5.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.6",
+    "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.1.2"
+  }
+}
+
+=== app\api\crm\status\route.ts ===
+export { dynamic } from "@/lib/api/not-implemented";
+import { notImplemented } from "@/lib/api/not-implemented";
+
+export function GET() {
+  return notImplemented();
+}
+
+export function POST() {
+  return notImplemented();
+}
+
+=== app\head\page.tsx ===
+import { Header } from "@/components/shell/Header";
+import { getSession } from "@/lib/session";
+import { OverviewTab } from "./_tabs/overview";
+
+export default async function HeadPage() {
+  const session = await getSession();
+  return (
+    <div className="min-h-full">
+      <Header role="head" eventId={session.eventId} memberId={session.memberId} />
+      <main className="p-6">
+        <OverviewTab />
+      </main>
+    </div>
+  );
+}
+
+=== app\head\_tabs\benchmark.tsx ===
+export function BenchmarkTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">benchmark</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\data-lab.tsx ===
+export function DataLabTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">data lab</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\deal-desk.tsx ===
+export function DealDeskTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">deal desk</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\eod.tsx ===
+export function EodTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">eod</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\initiatives.tsx ===
+export function InitiativesTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">initiatives</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\inventory.tsx ===
+export function InventoryTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">inventory</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\overview.tsx ===
+export function OverviewTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">Overview</h1>
+      <p className="mt-2 text-sm text-muted">Head tabs and live KPIs land in later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\plan.tsx ===
+export function PlanTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">plan</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\risks.tsx ===
+export function RisksTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">risks</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\settings.tsx ===
+export function SettingsTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">settings</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== app\head\_tabs\team.tsx ===
+export function TeamTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">team</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+=== components\head\DealDesk.tsx ===
+export function DealDesk() {
+  return null;
+}
+
+=== components\head\DecisionsList.tsx ===
+export function DecisionsList() {
+  return null;
+}
+
+=== components\head\FunnelChart.tsx ===
+export function FunnelChart() {
+  return null;
+}
+
+=== components\head\GatesChart.tsx ===
+export function GatesChart() {
+  return null;
+}
+
+=== components\head\InitiativeCards.tsx ===
+export function InitiativeCards() {
+  return null;
+}
+
+=== components\head\KpiCards.tsx ===
+export function KpiCards() {
+  return null;
+}
+
+=== components\head\LeadSupply.tsx ===
+export function LeadSupply() {
+  return null;
+}
+
+=== components\head\ModelTable.tsx ===
+export function ModelTable() {
+  return null;
+}
+
+=== components\head\TeamTable.tsx ===
+export function TeamTable() {
+  return null;
+}
+

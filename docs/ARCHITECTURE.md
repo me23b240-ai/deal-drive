@@ -1,4 +1,4 @@
-# Deal Drive architecture
+﻿# Deal Drive architecture
 
 Sponsorship command center for Saarang 2027 (simulated data) plus a CampusFest historical dataset.
 
@@ -13,7 +13,7 @@ Sponsorship command center for Saarang 2027 (simulated data) plus a CampusFest h
 - `lib/ai` Gemini client, tools, draft guards, rate limit.
 - `lib/seed` CampusFest xlsx loader and Saarang simulated seed.
 - `scripts/` seed, verify, and chat golden tests (tsx, PowerShell-safe).
-- `supabase/migrations/` `001_core.sql`, `002_events_and_facts.sql`, `003_views.sql`. Apply in the Supabase SQL editor.
+- `supabase/migrations/` `001_deal_drive_schema.sql`, `002_deal_drive_crm.sql`, `003_deal_drive_plan.sql`. Apply in the Supabase SQL editor.
 - `tests/` vitest unit tests.
 - `data/private/` gitignored. All Saarang CRM rows are fictional.
 
@@ -36,3 +36,4 @@ Sponsorship command center for Saarang 2027 (simulated data) plus a CampusFest h
 - `saarang-2027` live simulated demo (editable).
 - `campusfest-2025-work` working copy (editable).
 - `campusfest-2025` original locked seed (chatbot test set).
+

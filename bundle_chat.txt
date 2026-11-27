@@ -1,0 +1,3676 @@
+===== FILE: app\api\actions\[id]\confirm\route.ts =====
+export { dynamic } from "@/lib/api/not-implemented";
+import { notImplemented } from "@/lib/api/not-implemented";
+
+export function POST() {
+  return notImplemented();
+}
+
+===== FILE: app\api\actions\[id]\reject\route.ts =====
+export { dynamic } from "@/lib/api/not-implemented";
+import { notImplemented } from "@/lib/api/not-implemented";
+
+export function POST() {
+  return notImplemented();
+}
+
+===== FILE: app\api\chat\route.ts =====
+export { dynamic } from "@/lib/api/not-implemented";
+import { notImplemented } from "@/lib/api/not-implemented";
+
+export function GET() {
+  return notImplemented();
+}
+
+export function POST() {
+  return notImplemented();
+}
+
+===== FILE: docs\CONTEXT.md =====
+
+===== FILE: lib\ai\context.ts =====
+export const STATUS_GLOSSARY = `Proposal stage means prospective_or_better: status_events.to_status in (prospective, converted). Slabs sent is the generic first mail, not the proposal stage.`;
+
+===== FILE: lib\ai\draft.ts =====
+export const MAX_OPENING_WORDS = 90;
+
+===== FILE: lib\ai\gemini.ts =====
+import { GoogleGenAI } from "@google/genai";
+
+export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+
+export function getGemini() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing required env var GEMINI_API_KEY");
+  }
+  return new GoogleGenAI({ apiKey });
+}
+
+export function geminiModel(): string {
+  return process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+}
+
+===== FILE: lib\ai\guards.ts =====
+export function numeralsNotInFacts(text: string, facts: string[]): boolean {
+  const allowed = facts.join(" ");
+  const nums = text.match(/\d+/g) ?? [];
+  return nums.some((n) => !allowed.includes(n));
+}
+
+===== FILE: lib\ai\ratelimit.ts =====
+const WINDOW_MS = 60_000;
+const LIMIT = 20;
+const hits = new Map<string, number[]>();
+
+export function allowRequest(key: string, now = Date.now()): boolean {
+  const recent = (hits.get(key) ?? []).filter((t) => now - t < WINDOW_MS);
+  if (recent.length >= LIMIT) {
+    hits.set(key, recent);
+    return false;
+  }
+  recent.push(now);
+  hits.set(key, recent);
+  return true;
+}
+
+===== FILE: lib\ai\tools.ts =====
+export const READ_TOOLS = [
+  "get_overview",
+  "get_funnel",
+  "get_initiative_status",
+  "get_member_performance",
+  "get_weekly_target_status",
+  "get_needs_update",
+  "list_companies",
+  "get_company",
+  "get_deal_desk",
+  "get_payments_status",
+  "get_gates_status",
+  "get_lead_supply",
+  "run_projection",
+  "get_model_table",
+  "get_experiment_status",
+  "get_inventory",
+  "suggest_slab",
+  "get_campaign_funnel_historical",
+  "get_targets_vs_actual",
+  "compare",
+  "get_data_limitations",
+] as const;
+
+===== FILE: lib\api\not-implemented.ts =====
+export const dynamic = "force-dynamic";
+
+export function notImplemented() {
+  return Response.json({ error: "Not implemented yet" }, { status: 501 });
+}
+
+===== FILE: lib\api\parse.ts =====
+import type { z } from "zod";
+import { ValidationError } from "@/lib/db/errors";
+
+export async function parseBody<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
+  const raw: unknown = await req.json().catch(() => null);
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) throw new ValidationError(parsed.error.issues[0]?.message ?? "Invalid input");
+  return parsed.data;
+}
+===== FILE: lib\api\respond.ts =====
+import { errorMessage, errorStatus } from "@/lib/db/errors";
+
+export function apiOk<T>(data: T): Response {
+  return Response.json({ ok: true, data });
+}
+
+export function apiFail(error: unknown): Response {
+  return Response.json({ ok: false, error: errorMessage(error) }, { status: errorStatus(error) });
+}
+===== FILE: lib\db\client.ts =====
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required env var ${name}`);
+  }
+  return value;
+}
+
+let cached: SupabaseClient | null = null;
+
+export function getServiceClient(): SupabaseClient {
+  if (cached) return cached;
+  cached = createClient(required("NEXT_PUBLIC_SUPABASE_URL"), required("SUPABASE_SERVICE_ROLE_KEY"), {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  return cached;
+}
+
+===== FILE: lib\db\errors.ts =====
+export class HttpError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "HttpError";
+    this.status = status;
+  }
+}
+
+export class ForbiddenError extends HttpError {
+  constructor(message = "Not allowed") {
+    super(403, message);
+    this.name = "ForbiddenError";
+  }
+}
+
+export class NotFoundError extends HttpError {
+  constructor(message = "Not found") {
+    super(404, message);
+    this.name = "NotFoundError";
+  }
+}
+
+export class ValidationError extends HttpError {
+  constructor(message = "Invalid input") {
+    super(400, message);
+    this.name = "ValidationError";
+  }
+}
+
+export function errorStatus(error: unknown): number {
+  return error instanceof HttpError ? error.status : 500;
+}
+
+export function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return "Unknown error";
+}
+===== FILE: lib\db\guards.ts =====
+import type { Ctx } from "@/lib/types";
+import { ForbiddenError } from "@/lib/db/errors";
+
+export function assertWritable(ctx: Ctx): void {
+  if (ctx.isLocked) throw new ForbiddenError("This dataset is locked and read-only.");
+}
+
+export function requireHead(ctx: Ctx): void {
+  if (ctx.role !== "head") throw new ForbiddenError("Head access only.");
+}
+
+export function requireMember(ctx: Ctx): string {
+  if (ctx.role !== "coordinator" || !ctx.memberId) throw new ForbiddenError("Coordinator session required.");
+  return ctx.memberId;
+}
+
+/** Coordinators are always scoped to themselves; the head may pass an owner or null for everyone. */
+export function scopeOwner(ctx: Ctx, requested?: string | null): string | null {
+  if (ctx.role === "coordinator") {
+    if (!ctx.memberId) throw new ForbiddenError("No coordinator selected.");
+    return ctx.memberId;
+  }
+  return requested ?? null;
+}
+===== FILE: lib\db\queries\crm-companies.ts =====
+import { getServiceClient } from "@/lib/db/client";
+import { scopeOwner } from "@/lib/db/guards";
+import { businessDaysBetween, toIstDate } from "@/lib/domain/bizdays";
+import type { Ctx } from "@/lib/types";
+import { getHolidays } from "./holidays";
+import { fetchAll, num } from "./page";
+import { getNeedsUpdate } from "./views";
+
+export type CrmFilters = {
+  status?: string;
+  channel?: string;
+  tier?: string;
+  needsUpdate?: boolean;
+  q?: string;
+  sort?: "company" | "status" | "amount" | "follow_up" | "last_update";
+  dir?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+};
+
+export type CrmRow = {
+  id: string;
+  name: string;
+  crmStatus: string;
+  channel: string | null;
+  tier: string | null;
+  amountInr: number;
+  nextFollowUp: string | null;
+  lastTouchAt: string | null;
+  idleBdays: number;
+  flag: "idle" | "follow_up_due" | null;
+  poc: { name: string; jobTitle: string | null } | null;
+};
+
+export type CrmPage = { rows: CrmRow[]; total: number; page: number; pageSize: number };
+
+async function firstContacts(brandIds: string[]): Promise<Map<string, { name: string; jobTitle: string | null }>> {
+  const supabase = getServiceClient();
+  const out = new Map<string, { name: string; jobTitle: string | null }>();
+  for (let i = 0; i < brandIds.length; i += 100) {
+    const { data, error } = await supabase
+      .from("contacts")
+      .select("brand_id, name, job_title, created_at")
+      .in("brand_id", brandIds.slice(i, i + 100))
+      .order("created_at");
+    if (error) throw new Error(`contacts: ${error.message}`);
+    for (const r of data ?? []) {
+      const key = String(r.brand_id);
+      if (!out.has(key)) out.set(key, { name: String(r.name), jobTitle: (r.job_title as string | null) ?? null });
+    }
+  }
+  return out;
+}
+
+/** The coordinator's own companies (the head may pass an owner). Filtering, sorting and paging happen here. */
+export async function listCompanies(ctx: Ctx, filters: CrmFilters = {}, ownerId?: string | null): Promise<CrmPage> {
+  const owner = scopeOwner(ctx, ownerId);
+  const eq: Record<string, string> = { event_id: ctx.eventId };
+  if (owner) eq.owner_id = owner;
+  const [brands, holidays, needs] = await Promise.all([
+    fetchAll<Record<string, unknown>>(
+      "brands",
+      "id, name, crm_status, source_channel, company_tier, approx_amount_inr, next_follow_up, last_touch_at, created_at",
+      eq,
+    ),
+    getHolidays(ctx.eventId),
+    getNeedsUpdate(ctx, ownerId),
+  ]);
+  const live = brands.filter((b) => b.crm_status !== null);
+  const flagOf = new Map(needs.map((n) => [n.brand_id, n.reason]));
+  const contacts = await firstContacts(live.map((b) => String(b.id)));
+
+  let rows: CrmRow[] = live.map((b) => {
+    const id = String(b.id);
+    const touch = (b.last_touch_at as string | null) ?? null;
+    const from = toIstDate(touch ?? String(b.created_at));
+    return {
+      id,
+      name: String(b.name),
+      crmStatus: String(b.crm_status),
+      channel: (b.source_channel as string | null) ?? null,
+      tier: (b.company_tier as string | null) ?? null,
+      amountInr: num(b.approx_amount_inr),
+      nextFollowUp: (b.next_follow_up as string | null) ?? null,
+      lastTouchAt: touch,
+      idleBdays: businessDaysBetween(from, ctx.todayIst, holidays),
+      flag: flagOf.get(id) ?? null,
+      poc: contacts.get(id) ?? null,
+    };
+  });
+
+  if (filters.status) rows = rows.filter((r) => r.crmStatus === filters.status);
+  if (filters.channel) rows = rows.filter((r) => r.channel === filters.channel);
+  if (filters.tier) rows = rows.filter((r) => r.tier === filters.tier);
+  if (filters.needsUpdate) rows = rows.filter((r) => r.flag !== null);
+  const q = (filters.q ?? "").trim().toLowerCase();
+  if (q) rows = rows.filter((r) => r.name.toLowerCase().includes(q) || (r.poc?.name ?? "").toLowerCase().includes(q));
+
+  const dir = filters.dir === "asc" ? 1 : -1;
+  const key = filters.sort ?? "last_update";
+  const cmp = (a: CrmRow, b: CrmRow): number => {
+    switch (key) {
+      case "company": return a.name.localeCompare(b.name);
+      case "status": return a.crmStatus.localeCompare(b.crmStatus);
+      case "amount": return a.amountInr - b.amountInr;
+      case "follow_up": return (a.nextFollowUp ?? "9999").localeCompare(b.nextFollowUp ?? "9999");
+      default: return a.idleBdays - b.idleBdays;
+    }
+  };
+  rows.sort((a, b) => dir * cmp(a, b) || a.name.localeCompare(b.name));
+
+  const pageSize = Math.max(1, Math.min(100, filters.pageSize ?? 25));
+  const page = Math.max(1, filters.page ?? 1);
+  return { rows: rows.slice((page - 1) * pageSize, page * pageSize), total: rows.length, page, pageSize };
+}
+===== FILE: lib\db\queries\crm-deals.ts =====
+import { getServiceClient } from "@/lib/db/client";
+import { assertWritable } from "@/lib/db/guards";
+import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/db/errors";
+import type { Ctx, DealDeskRow } from "@/lib/types";
+import { getDealDesk } from "./views";
+
+export const OPEN_DEAL_STAGES = ["prospecting", "proposal_sent", "negotiating"] as const;
+export type OpenDealStage = (typeof OPEN_DEAL_STAGES)[number];
+
+/** Coordinators see their own open deals; closers see every open deal. */
+export async function listOpenDeals(ctx: Ctx): Promise<DealDeskRow[]> {
+  return getDealDesk(ctx);
+}
+
+async function loadDeal(ctx: Ctx, dealId: string): Promise<{ id: string; brandId: string; stage: string }> {
+  const { data, error } = await getServiceClient().from("deals").select("id, event_id, owner_id, brand_id, stage").eq("id", dealId).maybeSingle();
+  if (error) throw new Error(`deals: ${error.message}`);
+  if (!data || data.event_id !== ctx.eventId) throw new NotFoundError("Deal not found.");
+  if (ctx.role === "coordinator" && !ctx.isCloser && data.owner_id !== ctx.memberId) throw new ForbiddenError("This deal belongs to another coordinator.");
+  if (!(OPEN_DEAL_STAGES as readonly string[]).includes(String(data.stage))) throw new ValidationError("This deal is already closed.");
+  return { id: String(data.id), brandId: String(data.brand_id), stage: String(data.stage) };
+}
+
+/** Closing a deal goes through the company status (Converted or Rejected), so only open stages are editable here. */
+export async function updateDeal(ctx: Ctx, dealId: string, patch: { stage?: OpenDealStage; nextFollowUp?: string | null }): Promise<void> {
+  assertWritable(ctx);
+  const deal = await loadDeal(ctx, dealId);
+  const supabase = getServiceClient();
+  const now = new Date().toISOString();
+  const update: Record<string, unknown> = {};
+  if (patch.stage && patch.stage !== deal.stage) {
+    update.stage = patch.stage;
+    update.stage_changed_at = now;
+  }
+  if (patch.nextFollowUp !== undefined) update.next_follow_up = patch.nextFollowUp;
+  if (Object.keys(update).length === 0) return;
+  const { error } = await supabase.from("deals").update(update).eq("id", deal.id);
+  if (error) throw new Error(`deals: ${error.message}`);
+  const brandPatch: Record<string, unknown> = {};
+  if (update.stage) brandPatch.last_touch_at = now;
+  if (patch.nextFollowUp !== undefined) brandPatch.next_follow_up = patch.nextFollowUp;
+  const { error: bErr } = await supabase.from("brands").update(brandPatch).eq("id", deal.brandId);
+  if (bErr) throw new Error(`brands: ${bErr.message}`);
+}
+
+/** One nudge: logs a follow-up activity and resets the idle clock. */
+export async function nudgeDeal(ctx: Ctx, dealId: string): Promise<void> {
+  assertWritable(ctx);
+  const deal = await loadDeal(ctx, dealId);
+  const supabase = getServiceClient();
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("activities").insert({
+    event_id: ctx.eventId,
+    brand_id: deal.brandId,
+    owner_id: ctx.memberId,
+    event_type: "follow_up",
+    summary: "Nudge sent from the deal desk",
+    occurred_at: now,
+  });
+  if (error) throw new Error(`activities: ${error.message}`);
+  const { error: bErr } = await supabase.from("brands").update({ last_touch_at: now }).eq("id", deal.brandId);
+  if (bErr) throw new Error(`brands: ${bErr.message}`);
+}
+===== FILE: lib\db\queries\crm-detail.ts =====
+import { getServiceClient } from "@/lib/db/client";
+import { assertWritable } from "@/lib/db/guards";
+import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/db/errors";
+import { STATUS_LABELS, type StatusCode } from "@/lib/domain/status";
+import type { Ctx } from "@/lib/types";
+import { num } from "./page";
+
+export type ContactRow = { id: string; name: string; jobTitle: string | null; email: string | null; phone: string | null; linkedinUrl: string | null };
+export type TimelineItem = { at: string; kind: "status" | "activity"; title: string; detail: string | null };
+export type PaymentRow = { id: string; amountInr: number; dueOn: string | null; phase: string | null; receivedAt: string | null };
+
+export type CompanyDetail = {
+  id: string;
+  name: string;
+  industry: string | null;
+  sector: string | null;
+  crmStatus: string;
+  channel: string | null;
+  tier: string | null;
+  approxAmountInr: number;
+  finalAmountInr: number;
+  finalInKindInr: number;
+  rejectionReason: string | null;
+  nextFollowUp: string | null;
+  lastTouchAt: string | null;
+  notes: string | null;
+  linkedinUrl: string | null;
+  callAttempts: number;
+  contacts: ContactRow[];
+  timeline: TimelineItem[];
+  deal: { id: string; stage: string; proposedInr: number; signedInr: number; cashInr: number; inKindInr: number; nextFollowUp: string | null } | null;
+  payments: PaymentRow[];
+};
+
+const ACTIVITY_TITLES: Record<string, string> = {
+  call_attempt: "Call",
+  note: "Note",
+  mail_sent: "Mail sent",
+  follow_up: "Follow-up nudge",
+  status_change: "Status change",
+  outreach_sent: "Outreach sent",
+  replied: "Reply received",
+};
+
+const s = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+const label = (code: string | null): string => (code && code in STATUS_LABELS ? STATUS_LABELS[code as StatusCode] : "New");
+
+export async function getCompanyDetail(ctx: Ctx, brandId: string): Promise<CompanyDetail> {
+  const supabase = getServiceClient();
+  const { data: b, error } = await supabase
+    .from("brands")
+    .select(
+      "id, event_id, name, industry, sector, owner_id, crm_status, source_channel, company_tier, approx_amount_inr, final_amount_inr, final_in_kind_inr, rejection_reason, next_follow_up, last_touch_at, notes, linkedin_url, call_attempts",
+    )
+    .eq("id", brandId)
+    .maybeSingle();
+  if (error) throw new Error(`brands: ${error.message}`);
+  if (!b || b.event_id !== ctx.eventId || !b.crm_status) throw new NotFoundError("Company not found.");
+  if (ctx.role === "coordinator" && b.owner_id !== ctx.memberId) throw new ForbiddenError("This company belongs to another coordinator.");
+
+  const [contacts, events, acts, deals] = await Promise.all([
+    supabase.from("contacts").select("id, name, job_title, email, phone, linkedin_url, created_at").eq("brand_id", brandId).order("created_at"),
+    supabase.from("status_events").select("from_status, to_status, note, occurred_at").eq("brand_id", brandId).order("occurred_at", { ascending: false }).limit(40),
+    supabase.from("activities").select("event_type, outcome, summary, occurred_at").eq("brand_id", brandId).order("occurred_at", { ascending: false }).limit(40),
+    supabase
+      .from("deals")
+      .select("id, stage, proposed_value_inr, signed_value_inr, signed_cash_inr, signed_in_kind_inr, next_follow_up, created_at")
+      .eq("brand_id", brandId)
+      .order("created_at", { ascending: false })
+      .limit(1),
+  ]);
+  for (const r of [contacts, events, acts, deals]) if (r.error) throw new Error(r.error.message);
+
+  const deal = deals.data?.[0];
+  let payments: PaymentRow[] = [];
+  if (deal) {
+    const p = await supabase.from("payments").select("id, amount_inr, due_date, phase, received_at").eq("deal_id", String(deal.id)).order("due_date");
+    if (p.error) throw new Error(`payments: ${p.error.message}`);
+    payments = (p.data ?? []).map((r) => ({
+      id: String(r.id),
+      amountInr: num(r.amount_inr),
+      dueOn: s(r.due_date),
+      phase: s(r.phase),
+      receivedAt: s(r.received_at),
+    }));
+  }
+
+  const timeline: TimelineItem[] = [
+    ...(events.data ?? []).map((e): TimelineItem => ({
+      at: String(e.occurred_at),
+      kind: "status",
+      title: `${label(s(e.from_status))} to ${label(s(e.to_status))}`,
+      detail: s(e.note),
+    })),
+    ...(acts.data ?? [])
+      .filter((a) => a.event_type !== "status_change")
+      .map((a): TimelineItem => ({
+        at: String(a.occurred_at),
+        kind: "activity",
+        title: `${ACTIVITY_TITLES[String(a.event_type)] ?? String(a.event_type)}${a.outcome ? ` (${String(a.outcome).replace("_", " ")})` : ""}`,
+        detail: s(a.summary),
+      })),
+  ].sort((x, y) => y.at.localeCompare(x.at));
+
+  return {
+    id: String(b.id),
+    name: String(b.name),
+    industry: s(b.industry),
+    sector: s(b.sector),
+    crmStatus: String(b.crm_status),
+    channel: s(b.source_channel),
+    tier: s(b.company_tier),
+    approxAmountInr: num(b.approx_amount_inr),
+    finalAmountInr: num(b.final_amount_inr),
+    finalInKindInr: num(b.final_in_kind_inr),
+    rejectionReason: s(b.rejection_reason),
+    nextFollowUp: s(b.next_follow_up),
+    lastTouchAt: s(b.last_touch_at),
+    notes: s(b.notes),
+    linkedinUrl: s(b.linkedin_url),
+    callAttempts: num(b.call_attempts),
+    contacts: (contacts.data ?? []).map((c) => ({
+      id: String(c.id),
+      name: String(c.name),
+      jobTitle: s(c.job_title),
+      email: s(c.email),
+      phone: s(c.phone),
+      linkedinUrl: s(c.linkedin_url),
+    })),
+    timeline,
+    deal: deal
+      ? {
+          id: String(deal.id),
+          stage: String(deal.stage),
+          proposedInr: num(deal.proposed_value_inr),
+          signedInr: num(deal.signed_value_inr),
+          cashInr: num(deal.signed_cash_inr),
+          inKindInr: num(deal.signed_in_kind_inr),
+          nextFollowUp: s(deal.next_follow_up),
+        }
+      : null,
+    payments,
+  };
+}
+
+export type PocInput = { id?: string | null; name: string; jobTitle?: string | null; email?: string | null; phone?: string | null; linkedinUrl?: string | null };
+
+/** Add or edit a point of contact on one of the coordinator's companies. */
+export async function upsertContact(ctx: Ctx, brandId: string, input: PocInput): Promise<ContactRow> {
+  assertWritable(ctx);
+  const name = input.name.trim();
+  if (!name) throw new ValidationError("A contact needs a name.");
+  const email = input.email?.trim() || null;
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new ValidationError("That email address doesn't look right.");
+  const supabase = getServiceClient();
+  const { data: b, error: bErr } = await supabase.from("brands").select("id, event_id, owner_id").eq("id", brandId).maybeSingle();
+  if (bErr) throw new Error(`brands: ${bErr.message}`);
+  if (!b || b.event_id !== ctx.eventId) throw new NotFoundError("Company not found.");
+  if (ctx.role === "coordinator" && b.owner_id !== ctx.memberId) throw new ForbiddenError("This company belongs to another coordinator.");
+  const row = {
+    brand_id: brandId,
+    name,
+    job_title: input.jobTitle?.trim() || null,
+    email,
+    phone: input.phone?.trim() || null,
+    linkedin_url: input.linkedinUrl?.trim() || null,
+  };
+  const q = input.id
+    ? supabase.from("contacts").update(row).eq("id", input.id).eq("brand_id", brandId)
+    : supabase.from("contacts").insert(row);
+  const { data, error } = await q.select("id, name, job_title, email, phone, linkedin_url").single();
+  if (error) throw new Error(`contacts: ${error.message}`);
+  return {
+    id: String(data.id),
+    name: String(data.name),
+    jobTitle: s(data.job_title),
+    email: s(data.email),
+    phone: s(data.phone),
+    linkedinUrl: s(data.linkedin_url),
+  };
+}
+===== FILE: lib\db\queries\crm-status.ts =====
+import { getServiceClient } from "@/lib/db/client";
+import { assertWritable } from "@/lib/db/guards";
+import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/db/errors";
+import { addBusinessDays, addDays, toIstDate } from "@/lib/domain/bizdays";
+import { validateTransition, type StatusChangeInput } from "@/lib/domain/crm-rules";
+import type { StatusCode } from "@/lib/domain/status";
+import type { Ctx } from "@/lib/types";
+import { getHolidays } from "./holidays";
+import { num } from "./page";
+
+type BrandState = {
+  id: string;
+  name: string;
+  owner_id: string | null;
+  crm_status: StatusCode;
+  call_attempts: number;
+  first_outreach_at: string | null;
+  first_response_at: string | null;
+};
+
+async function loadOwnedBrand(ctx: Ctx, brandId: string): Promise<BrandState> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase
+    .from("brands")
+    .select("id, name, event_id, owner_id, crm_status, call_attempts, first_outreach_at, first_response_at")
+    .eq("id", brandId)
+    .maybeSingle();
+  if (error) throw new Error(`brands: ${error.message}`);
+  if (!data || data.event_id !== ctx.eventId || !data.crm_status) throw new NotFoundError("Company not found.");
+  if (ctx.role === "coordinator" && data.owner_id !== ctx.memberId) throw new ForbiddenError("This company belongs to another coordinator.");
+  return {
+    id: String(data.id),
+    name: String(data.name),
+    owner_id: (data.owner_id as string | null) ?? null,
+    crm_status: data.crm_status as StatusCode,
+    call_attempts: num(data.call_attempts),
+    first_outreach_at: (data.first_outreach_at as string | null) ?? null,
+    first_response_at: (data.first_response_at as string | null) ?? null,
+  };
+}
+
+/** Turn a database guard message into a friendly validation error. */
+function friendly(message: string): Error {
+  if (message.includes("Didn") || message.includes("Ghosting")) return new ValidationError(message);
+  return new Error(message);
+}
+
+const OUTREACH_STATUSES: StatusCode[] = ["slabs_sent", "didnt_pick", "contacted", "ghosting", "prospective", "converted", "rejected"];
+const RESPONSE_STATUSES: StatusCode[] = ["contacted", "prospective", "converted", "rejected"];
+
+async function logStatusActivity(ctx: Ctx, brand: BrandState, note: string | null, to: StatusCode): Promise<void> {
+  const supabase = getServiceClient();
+  await supabase.from("activities").insert({
+    event_id: ctx.eventId,
+    brand_id: brand.id,
+    owner_id: brand.owner_id,
+    event_type: "status_change",
+    outcome: to,
+    summary: note,
+    occurred_at: new Date().toISOString(),
+  });
+}
+
+async function createPaymentRows(ctx: Ctx, brandId: string): Promise<{ dealId: string | null; created: number }> {
+  const supabase = getServiceClient();
+  const { data: deals, error } = await supabase
+    .from("deals")
+    .select("id, signed_cash_inr, stage_changed_at")
+    .eq("brand_id", brandId)
+    .eq("stage", "partner_confirmed")
+    .order("stage_changed_at", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(`deals: ${error.message}`);
+  const deal = deals?.[0];
+  if (!deal) return { dealId: null, created: 0 };
+  const dealId = String(deal.id);
+  const { count, error: cErr } = await supabase.from("payments").select("id", { count: "exact", head: true }).eq("deal_id", dealId);
+  if (cErr) throw new Error(`payments: ${cErr.message}`);
+  if ((count ?? 0) > 0) return { dealId, created: 0 };
+  const cash = num(deal.signed_cash_inr);
+  if (cash <= 0) return { dealId, created: 0 };
+  const plan = ctx.event.model_assumptions.plan;
+  const raw = plan && typeof plan === "object" ? (plan as Record<string, unknown>).prefestShare : undefined;
+  const share = typeof raw === "number" && raw > 0 && raw < 1 ? raw : 0.75;
+  const pre = Math.round(cash * share);
+  const start = ctx.event.starts_at ? toIstDate(ctx.event.starts_at) : ctx.todayIst;
+  const end = ctx.event.ends_at ? toIstDate(ctx.event.ends_at) : start;
+  const rows = [
+    { deal_id: dealId, amount_inr: pre, due_date: addDays(start, -1), phase: "pre_fest", note: "Pre-fest instalment (assumed 75%)" },
+    { deal_id: dealId, amount_inr: cash - pre, due_date: addDays(end, 15), phase: "post_fest", note: "Post-fest instalment (assumed 25%)" },
+  ];
+  const { error: iErr } = await supabase.from("payments").insert(rows);
+  if (iErr) throw new Error(`payments: ${iErr.message}`);
+  return { dealId, created: rows.length };
+}
+
+export async function changeCompanyStatus(ctx: Ctx, input: StatusChangeInput): Promise<{ dealId: string | null; paymentsCreated: number }> {
+  assertWritable(ctx);
+  const brand = await loadOwnedBrand(ctx, input.brandId);
+  const problem = validateTransition(brand.crm_status, input);
+  if (problem) throw new ValidationError(problem);
+
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = { crm_status: input.to, last_touch_at: now };
+  if (OUTREACH_STATUSES.includes(input.to) && !brand.first_outreach_at) patch.first_outreach_at = now;
+  if (RESPONSE_STATUSES.includes(input.to) && !brand.first_response_at) patch.first_response_at = now;
+  if (input.note) patch.notes = input.note;
+
+  if (input.to === "prospective") {
+    patch.approx_amount_inr = input.approxAmountInr;
+    const holidays = await getHolidays(ctx.eventId);
+    patch.next_follow_up = input.nextFollowUp ?? addBusinessDays(ctx.todayIst, 3, holidays);
+  } else if (input.nextFollowUp !== undefined) {
+    patch.next_follow_up = input.nextFollowUp;
+  }
+  if (input.to === "converted") {
+    patch.final_amount_inr = input.finalAmountInr;
+    patch.final_in_kind_inr = input.inKindInr ?? 0;
+    patch.next_follow_up = null;
+  }
+  if (input.to === "rejected") {
+    patch.rejection_reason = (input.rejectionReason ?? "").trim();
+    patch.next_follow_up = null;
+  }
+
+  const supabase = getServiceClient();
+  const { error } = await supabase.from("brands").update(patch).eq("id", brand.id);
+  if (error) throw friendly(error.message);
+  await logStatusActivity(ctx, brand, input.note ?? null, input.to);
+
+  if (input.to === "converted") {
+    const res = await createPaymentRows(ctx, brand.id);
+    return { dealId: res.dealId, paymentsCreated: res.created };
+  }
+  return { dealId: null, paymentsCreated: 0 };
+}
+
+export type ActivityKind = "call" | "call_no_answer" | "note";
+
+/** Quick actions. A call with no answer adds an attempt but never changes the status. */
+export async function logActivity(
+  ctx: Ctx,
+  input: { brandId: string; kind: ActivityKind; note?: string | null; nextFollowUp?: string | null },
+): Promise<{ attempts: number }> {
+  assertWritable(ctx);
+  const brand = await loadOwnedBrand(ctx, input.brandId);
+  const supabase = getServiceClient();
+  const now = new Date().toISOString();
+  const attempts = input.kind === "call_no_answer" ? brand.call_attempts + 1 : brand.call_attempts;
+  const { error: aErr } = await supabase.from("activities").insert({
+    event_id: ctx.eventId,
+    brand_id: brand.id,
+    owner_id: brand.owner_id,
+    event_type: input.kind === "note" ? "note" : "call_attempt",
+    outcome: input.kind === "call" ? "answered" : input.kind === "call_no_answer" ? "no_answer" : null,
+    summary: input.note ?? null,
+    occurred_at: now,
+  });
+  if (aErr) throw new Error(`activities: ${aErr.message}`);
+  const patch: Record<string, unknown> = { last_touch_at: now, call_attempts: attempts };
+  if (input.nextFollowUp !== undefined) patch.next_follow_up = input.nextFollowUp;
+  const { error } = await supabase.from("brands").update(patch).eq("id", brand.id);
+  if (error) throw new Error(`brands: ${error.message}`);
+  return { attempts };
+}
+
+export async function setFollowUp(ctx: Ctx, brandId: string, date: string | null): Promise<void> {
+  assertWritable(ctx);
+  const brand = await loadOwnedBrand(ctx, brandId);
+  const { error } = await getServiceClient().from("brands").update({ next_follow_up: date }).eq("id", brand.id);
+  if (error) throw new Error(`brands: ${error.message}`);
+}
+===== FILE: lib\db\queries\crm-tasks.ts =====
+import { getServiceClient } from "@/lib/db/client";
+import { assertWritable, requireMember, scopeOwner } from "@/lib/db/guards";
+import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/db/errors";
+import { addBusinessDays } from "@/lib/domain/bizdays";
+import type { Ctx } from "@/lib/types";
+import { getHolidays } from "./holidays";
+import { fetchAll } from "./page";
+
+export type TaskRow = {
+  id: string;
+  title: string;
+  dueOn: string | null;
+  status: string;
+  source: string;
+  brandId: string | null;
+  company: string | null;
+};
+
+export async function listTasks(ctx: Ctx, ownerId?: string | null): Promise<TaskRow[]> {
+  const owner = scopeOwner(ctx, ownerId);
+  const eq: Record<string, string> = { event_id: ctx.eventId };
+  if (owner) eq.owner_id = owner;
+  const rows = (await fetchAll<Record<string, unknown>>("tasks", "id, title, due_date, status, source, brand_id", eq)).filter(
+    (r) => r.status === "todo" || r.status === "doing",
+  );
+  const ids = [...new Set(rows.map((r) => r.brand_id).filter((x): x is string => typeof x === "string"))];
+  const names = new Map<string, string>();
+  const supabase = getServiceClient();
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await supabase.from("brands").select("id, name").in("id", ids.slice(i, i + 100));
+    if (error) throw new Error(`brands: ${error.message}`);
+    for (const b of data ?? []) names.set(String(b.id), String(b.name));
+  }
+  return rows
+    .map((r) => ({
+      id: String(r.id),
+      title: String(r.title),
+      dueOn: (r.due_date as string | null) ?? null,
+      status: String(r.status),
+      source: String(r.source ?? "manual"),
+      brandId: (r.brand_id as string | null) ?? null,
+      company: typeof r.brand_id === "string" ? names.get(r.brand_id) ?? null : null,
+    }))
+    .sort((a, b) => (a.dueOn ?? "9999").localeCompare(b.dueOn ?? "9999") || a.title.localeCompare(b.title));
+}
+
+export async function createTask(ctx: Ctx, input: { title: string; dueOn?: string | null; brandId?: string | null }): Promise<TaskRow> {
+  assertWritable(ctx);
+  const memberId = requireMember(ctx);
+  const title = input.title.trim();
+  if (!title) throw new ValidationError("A task needs a title.");
+  const holidays = await getHolidays(ctx.eventId);
+  const dueOn = input.dueOn ?? addBusinessDays(ctx.todayIst, 1, holidays);
+  const supabase = getServiceClient();
+  const { data, error } = await supabase
+    .from("tasks")
+    .insert({
+      event_id: ctx.eventId,
+      title,
+      owner_id: memberId,
+      created_by: memberId,
+      brand_id: input.brandId ?? null,
+      due_date: dueOn,
+      status: "todo",
+      source: "manual",
+    })
+    .select("id, title, due_date, status, source, brand_id")
+    .single();
+  if (error) throw new Error(`tasks: ${error.message}`);
+  return {
+    id: String(data.id),
+    title: String(data.title),
+    dueOn: (data.due_date as string | null) ?? null,
+    status: String(data.status),
+    source: String(data.source),
+    brandId: (data.brand_id as string | null) ?? null,
+    company: null,
+  };
+}
+
+export async function setTaskDone(ctx: Ctx, taskId: string, done: boolean): Promise<void> {
+  assertWritable(ctx);
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.from("tasks").select("id, owner_id, event_id").eq("id", taskId).maybeSingle();
+  if (error) throw new Error(`tasks: ${error.message}`);
+  if (!data || data.event_id !== ctx.eventId) throw new NotFoundError("Task not found.");
+  if (ctx.role === "coordinator" && data.owner_id !== ctx.memberId) throw new ForbiddenError("This task belongs to someone else.");
+  const { error: upErr } = await supabase
+    .from("tasks")
+    .update({ status: done ? "done" : "todo", completed_at: done ? new Date().toISOString() : null })
+    .eq("id", taskId);
+  if (upErr) throw new Error(`tasks: ${upErr.message}`);
+}
+===== FILE: lib\db\queries\ctx.ts =====
+import { cache } from "react";
+import { getSession, DEFAULT_EVENT_ID, type DemoRole } from "@/lib/session";
+import { toIstDate, todayIST } from "@/lib/domain/bizdays";
+import { fallbackEvent, getEventInfo } from "@/lib/db/queries/events";
+import { listTeam } from "@/lib/db/queries/team";
+import type { Ctx } from "@/lib/types";
+
+/** Pages pass their route role ("head" or "coordinator") so the URL decides the role. */
+export const getCtx = cache(async (routeRole?: DemoRole): Promise<Ctx> => {
+  const session = await getSession();
+  const role = routeRole ?? session.role;
+
+  let event = null;
+  try {
+    event = (await getEventInfo(session.eventId)) ?? (await getEventInfo(DEFAULT_EVENT_ID));
+  } catch {
+    event = null;
+  }
+  const info = event ?? fallbackEvent(session.eventId);
+
+  let memberId = session.memberId;
+  let isCloser = false;
+  if (role === "coordinator") {
+    const team = await listTeam(info.id).catch(() => []);
+    const coordinators = team.filter((m) => m.role === "member");
+    const mine = coordinators.find((m) => m.id === memberId) ?? coordinators[0];
+    memberId = mine?.id ?? null;
+    isCloser = mine?.is_closer ?? false;
+  }
+
+  return {
+    eventId: info.id,
+    event: info,
+    role,
+    memberId,
+    isCloser,
+    todayIst: info.as_of ? toIstDate(info.as_of) : todayIST(),
+    isLocked: info.is_seed,
+  };
+});
+===== FILE: lib\db\queries\decisions.ts =====
+import { requireHead } from "../guards";
+import type { Ctx } from "../../types";
+import { addDays, businessDaysBetween, businessDaysLeftInWeek, weekEndIST, weekStartIST } from "../../domain/bizdays";
+import { buildDecisions, type Decision, type DecisionSnapshot } from "../../domain/decisions";
+import { coordinatorStat, ownershipConflicts, staleProspects } from "../../model/derive";
+import { getHolidays } from "./holidays";
+import { getInitiativeStatuses } from "./initiatives";
+import { getBrandRows, getGateReport } from "./plan";
+import { coordinatorsOf, listTeam } from "./team";
+import { getTeamWeekSummary } from "./weekly";
+
+/** A prospect with no touch for more than this many business days is stale. */
+export const STALE_PROSPECT_BDAYS = 3;
+
+/** Everything buildDecisions needs, read from the database. No payment rule: payments are 75/25 by phase, not due dates. */
+export async function getDecisionSnapshot(ctx: Ctx): Promise<DecisionSnapshot> {
+  requireHead(ctx);
+  const [team, holidays, brands, week, gateReport, initiatives] = await Promise.all([
+    listTeam(ctx.eventId),
+    getHolidays(ctx.eventId),
+    getBrandRows(ctx),
+    getTeamWeekSummary(ctx),
+    getGateReport(ctx),
+    getInitiativeStatuses(ctx),
+  ]);
+  const nameOf = new Map(team.map((m) => [m.id, m.name]));
+  const weekStart = weekStartIST(ctx.todayIst);
+  const inWeek = businessDaysBetween(addDays(weekStart, -1), weekEndIST(weekStart), holidays);
+  const left = businessDaysLeftInWeek(ctx.todayIst, holidays);
+
+  const coordinators = coordinatorsOf(team).map((m) => {
+    const w = week.members.find((x) => x.memberId === m.id);
+    return coordinatorStat(
+      { id: m.id, name: m.name },
+      brands,
+      { outreached: w?.outreached ?? 0, target: w?.target ?? ctx.event.weekly_target_default },
+      ctx.todayIst,
+      holidays,
+      { inWeek, left },
+    );
+  });
+
+  return {
+    initiatives: initiatives.map((i) => ({ code: i.code, name: i.name, badge: i.badge, reason: i.reason })),
+    coordinators,
+    staleProspects: staleProspects(brands, STALE_PROSPECT_BDAYS, ctx.todayIst, holidays, nameOf),
+    overduePayments: [],
+    ownershipConflicts: ownershipConflicts(brands, nameOf),
+    gates: gateReport.statuses,
+  };
+}
+
+export async function getDecisions(ctx: Ctx): Promise<Decision[]> {
+  return buildDecisions(await getDecisionSnapshot(ctx));
+}
+===== FILE: lib\db\queries\events.ts =====
+import { getServiceClient } from "@/lib/db/client";
+import type { EventInfo } from "@/lib/types";
+
+const COLUMNS = "id, name, is_seed, starts_at, ends_at, as_of, weekly_target_default, model_assumptions";
+
+export type EventRow = Pick<EventInfo, "id" | "name" | "is_seed">;
+
+function toInfo(row: Record<string, unknown>): EventInfo {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? row.id),
+    is_seed: Boolean(row.is_seed),
+    starts_at: (row.starts_at as string | null) ?? null,
+    ends_at: (row.ends_at as string | null) ?? null,
+    as_of: (row.as_of as string | null) ?? null,
+    weekly_target_default: typeof row.weekly_target_default === "number" ? row.weekly_target_default : 10,
+    model_assumptions:
+      row.model_assumptions && typeof row.model_assumptions === "object"
+        ? (row.model_assumptions as Record<string, unknown>)
+        : {},
+  };
+}
+
+export function fallbackEvent(id: string): EventInfo {
+  return {
+    id,
+    name: id,
+    is_seed: id === "campusfest-2025",
+    starts_at: null,
+    ends_at: null,
+    as_of: null,
+    weekly_target_default: 10,
+    model_assumptions: {},
+  };
+}
+
+export async function listEvents(): Promise<EventInfo[]> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.from("events").select(COLUMNS).order("id");
+  if (error) throw new Error(`events: ${error.message}`);
+  return (data ?? []).map((row) => toInfo(row as Record<string, unknown>));
+}
+
+export async function getEventInfo(eventId: string): Promise<EventInfo | null> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.from("events").select(COLUMNS).eq("id", eventId).maybeSingle();
+  if (error) throw new Error(`events: ${error.message}`);
+  return data ? toInfo(data as Record<string, unknown>) : null;
+}
+
+export const getEvent = getEventInfo;
+===== FILE: lib\db\queries\head-a-initiatives.ts =====
+import { getServiceClient } from "../client";
+import { NotFoundError, ValidationError } from "../errors";
+import { assertWritable, requireHead } from "../guards";
+import type { Ctx } from "../../types";
+import { toIstDate } from "../../domain/bizdays";
+import { clauseText, isRuleJson } from "../../domain/rules-engine";
+import type { Badge } from "../../domain/initiatives";
+import type { Experiment } from "../../model/derive";
+import { getInitiativeStatuses } from "./initiatives";
+import { fetchAll, num } from "./page";
+import { getPlanModel } from "./plan";
+import { listTeam } from "./team";
+
+type Row = Record<string, unknown>;
+
+// Fallback concept text from the plan, used when campaigns.concept is empty.
+const CONCEPTS: Record<string, string> = {
+  "bet-1": "Closing squad (head plus closers) on the open prospects: custom slab within 1 business day, MoU the same day as the yes, daily 15-minute stand-up.",
+  "bet-2": "Cash-first terms: 75/25 by default, in-kind capped, discounted club-title and stall bundles only after the bundle start date.",
+  "bet-3": "Warm renewals: source more past-sponsor and other-fest leads, work the warm queue first, sector hooks from the fact bank.",
+  "bet-4": "Lineup-triggered pitch to artist-linked brands using the announced headliners.",
+  "bet-5": "Capped cold test on other-channel leads: personalised vs template opening, with a hard stop.",
+};
+
+const asNum = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+const asText = (v: unknown): string | null => (v === null || v === undefined || v === "" ? null : String(v));
+const asDate = (v: unknown): string | null => {
+  const t = asText(v);
+  return t ? toIstDate(t) : null;
+};
+const ruleLines = (v: unknown): string[] => (isRuleJson(v) ? v.all.map(clauseText) : []);
+
+function toLines(value: unknown): string[] {
+  if (value === null || value === undefined) return [];
+  if (typeof value === "string") return value.trim() ? [value.trim()] : [];
+  if (Array.isArray(value)) return value.flatMap((v) => (typeof v === "object" && v ? [JSON.stringify(v)] : [String(v)]));
+  if (typeof value === "object") {
+    return Object.entries(value as Row).map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`);
+  }
+  return [String(value)];
+}
+
+export type InitiativeCardData = {
+  campaignId: string;
+  code: string;
+  name: string;
+  badge: Badge;
+  reason: string;
+  concept: string | null;
+  owner: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  budgetInr: number;
+  spendInr: number;
+  status: string;
+  kpis: string[];
+  expectedInr: number | null;
+  liveInr: number | null;
+  rules: { scale: string[]; change: string[]; stop: string[] };
+};
+
+export type InitiativeBoard = {
+  cards: InitiativeCardData[];
+  experiment: Experiment | null;
+  totalBudgetInr: number;
+  totalSpendInr: number;
+};
+
+export async function getInitiativeBoard(ctx: Ctx): Promise<InitiativeBoard> {
+  requireHead(ctx);
+  const [statuses, rows, model, team] = await Promise.all([
+    getInitiativeStatuses(ctx),
+    fetchAll<Row>(
+      "campaigns",
+      "id, source_id, owner_id, planned_start, planned_end, budget_inr, spend_inr, status, concept, kpis, expected_stretch_cash_inr, scale_rule, change_rule, stop_rule",
+      { event_id: ctx.eventId, kind: "initiative" },
+    ),
+    getPlanModel(ctx),
+    listTeam(ctx.eventId),
+  ]);
+  const nameOf = new Map(team.map((m) => [m.id, m.name]));
+  const byId = new Map(rows.map((r) => [String(r.id), r]));
+
+  const cards = statuses.map((s): InitiativeCardData => {
+    const row: Row = byId.get(s.campaignId) ?? {};
+    const ownerId = asText(row.owner_id);
+    return {
+      campaignId: s.campaignId,
+      code: s.code,
+      name: s.name,
+      badge: s.badge,
+      reason: s.reason,
+      concept: asText(row.concept) ?? CONCEPTS[s.code] ?? null,
+      owner: ownerId ? (nameOf.get(ownerId) ?? null) : null,
+      startDate: asDate(row.planned_start),
+      endDate: asDate(row.planned_end),
+      budgetInr: num(row.budget_inr),
+      spendInr: num(row.spend_inr),
+      status: asText(row.status) ?? "active",
+      kpis: toLines(row.kpis),
+      expectedInr: asNum(row.expected_stretch_cash_inr),
+      liveInr: model.attribution.rows.find((a) => a.bet === s.code)?.cashOverFloor ?? null,
+      rules: { scale: ruleLines(row.scale_rule), change: ruleLines(row.change_rule), stop: ruleLines(row.stop_rule) },
+    };
+  });
+
+  return {
+    cards,
+    experiment: statuses.find((s) => s.code === "bet-5")?.experiment ?? null,
+    totalBudgetInr: cards.reduce((t, c) => t + c.budgetInr, 0),
+    totalSpendInr: cards.reduce((t, c) => t + c.spendInr, 0),
+  };
+}
+
+export type InitiativePatch = { budget?: number | undefined; spend?: number | undefined; status?: string | undefined };
+
+/** Budget, spend and status only (all real columns on campaigns). */
+export async function updateInitiative(ctx: Ctx, campaignId: string, patch: InitiativePatch): Promise<void> {
+  requireHead(ctx);
+  assertWritable(ctx);
+  const supabase = getServiceClient();
+  const found = await supabase
+    .from("campaigns")
+    .select("id")
+    .eq("id", campaignId)
+    .eq("event_id", ctx.eventId)
+    .eq("kind", "initiative")
+    .maybeSingle();
+  if (found.error) throw new Error(`campaigns: ${found.error.message}`);
+  if (!found.data) throw new NotFoundError("Initiative not found");
+
+  const update: Row = {};
+  if (patch.budget !== undefined) update.budget_inr = Math.round(patch.budget);
+  if (patch.spend !== undefined) update.spend_inr = Math.round(patch.spend);
+  if (patch.status !== undefined) update.status = patch.status;
+  if (Object.keys(update).length === 0) throw new ValidationError("Nothing to update");
+
+  const res = await supabase.from("campaigns").update(update).eq("id", campaignId).eq("event_id", ctx.eventId);
+  if (res.error) throw new Error(`campaigns: ${res.error.message}`);
+}
+===== FILE: lib\db\queries\head-a-overview.ts =====
+import { requireHead } from "../guards";
+import type { Ctx, TeamWeekSummary } from "../../types";
+import { getHeadKpis, type HeadKpis } from "./overview";
+import { getSignedDeals } from "./plan";
+import { getTeamWeekSummary } from "./weekly";
+
+export type OverviewData = {
+  kpis: HeadKpis;
+  week: TeamWeekSummary;
+  signedCashInr: number;
+  signedInKindInr: number;
+};
+
+export async function getOverviewData(ctx: Ctx): Promise<OverviewData> {
+  requireHead(ctx);
+  const [kpis, week, signed] = await Promise.all([getHeadKpis(ctx), getTeamWeekSummary(ctx), getSignedDeals(ctx)]);
+  return {
+    kpis,
+    week,
+    signedCashInr: signed.reduce((t, d) => t + d.cashInr, 0),
+    signedInKindInr: signed.reduce((t, d) => t + d.inKindInr, 0),
+  };
+}
+===== FILE: lib\db\queries\head-a-plan.ts =====
+import { requireHead } from "../guards";
+import type { Ctx, TeamGoal, WarmthFunnelRow } from "../../types";
+import { formatInr } from "../../domain/money";
+import type { ProjectionResult } from "../../model/projection";
+import { getGateReport, getPlanModel, type GateReport, type PlanModel } from "./plan";
+import { getTeamGoals } from "./settings";
+import { getWarmthFunnel } from "./views";
+
+export const MIN_OBSERVED_N = 30;
+
+export type ModelRow = {
+  key: string;
+  label: string;
+  unit: "count" | "deals" | "inr" | "pct";
+  floor: number;
+  base: number;
+  stretch: number;
+};
+
+export type ObservedRow = {
+  segment: "warm" | "other";
+  metric: string;
+  base: number;
+  stretch: number;
+  observed: number | null;
+  n: number;
+  outreached: number;
+  enough: boolean;
+};
+
+export type PlanView = {
+  model: PlanModel;
+  rows: ModelRow[];
+  example: string[];
+  observed: ObservedRow[];
+  gates: GateReport;
+  goals: { base: TeamGoal | null; stretch: TeamGoal | null };
+};
+
+const pct = (x: number): string => `${Math.round(x * 1000) / 10}%`;
+
+export function buildModelRows(model: PlanModel): ModelRow[] {
+  const { settings: s, state: st, projection: p } = model;
+  const seg = (leads: number, r: { response: number; proposalRate: number }) => ({
+    conv: leads * r.response,
+    prop: leads * r.response * r.proposalRate,
+  });
+  const bw = seg(st.queueWarm, s.base.warm);
+  const bo = seg(st.queueOther, s.base.other);
+  const sw = seg(s.stretchWarmLeads, s.stretch.warm);
+  const so = seg(s.stretchOtherLeads, s.stretch.other);
+  const eff = (r: ProjectionResult): number =>
+    r.signed > 0 && s.prefestShare > 0 ? 1 - r.cashBeforeFest / (r.signed * s.prefestShare) : 0;
+  const row = (key: string, label: string, unit: ModelRow["unit"], floor: number, base: number, stretch: number): ModelRow => ({
+    key,
+    label,
+    unit,
+    floor,
+    base,
+    stretch,
+  });
+  return [
+    row("new_warm", "New outreach: warm leads", "count", 0, st.queueWarm, s.stretchWarmLeads),
+    row("new_other", "New outreach: other leads", "count", 0, st.queueOther, s.stretchOtherLeads),
+    row("conversations", "Conversations (responses)", "count", 0, bw.conv + bo.conv, sw.conv + so.conv),
+    row("proposals", "Proposals (prospective or better)", "count", 0, bw.prop + bo.prop, sw.prop + so.prop),
+    row("new_deals", "New signed deals", "deals", 0, p.base.newDeals, p.stretch.newDeals),
+    row("open_closes", "Open-prospect closes", "deals", 0, p.base.openDeals, p.stretch.openDeals),
+    row("total_deals", "Total signed deals", "deals", st.signedDealsToDate, p.base.totalDeals, p.stretch.totalDeals),
+    row("total_signed", "Total signed amount", "inr", st.signedToDate, p.base.signed, p.stretch.signed),
+    row("inkind", "In-kind share (effective)", "pct", st.observedInkindShare, eff(p.base), eff(p.stretch)),
+    row("cash", "Cash before fest", "inr", p.floor, p.base.cashBeforeFest, p.stretch.cashBeforeFest),
+  ];
+}
+
+export function workedExample(model: PlanModel): string[] {
+  const { settings: s, state: st, projection: p } = model;
+  const line = (name: string, r: ProjectionResult, closeRate: number, inkind: number): string[] => [
+    `${name} signed = ${formatInr(st.signedToDate)} signed + ${formatInr(st.openProspectInr)} x ${pct(closeRate)} open-prospect close + ${r.newDeals.toFixed(2)} new deals x ${formatInr(s.avgNewDeal)} = ${formatInr(r.signed)}`,
+    `${name} cash before fest = ${formatInr(r.signed)} x (1 - ${pct(inkind)} in-kind) x ${pct(s.prefestShare)} pre-fest = ${formatInr(r.cashBeforeFest)}`,
+  ];
+  const out = [
+    ...line("Base", p.base, s.base.closeRate, s.base.inkindShare),
+    ...line("Stretch", p.stretch, s.stretch.closeRate, s.stretch.inkindShare),
+    `Floor cash = ${formatInr(st.signedToDate)} x (1 - ${pct(st.observedInkindShare)} observed in-kind) x ${pct(s.prefestShare)} pre-fest = ${formatInr(p.floor)}`,
+  ];
+  if (s.inkindScope === "new_only") {
+    out.push("In-kind policy is new_only: existing signed keeps its observed in-kind share, so the cash lines above are approximate.");
+  }
+  return out;
+}
+
+export function observedRows(model: PlanModel, warmth: WarmthFunnelRow[]): ObservedRow[] {
+  const out: ObservedRow[] = [];
+  for (const seg of ["warm", "other"] as const) {
+    const w = warmth.find((r) => r.warmth === seg);
+    const o = Number(w?.outreached ?? 0);
+    const r = Number(w?.responded ?? 0);
+    const p = Number(w?.prospective_or_better ?? 0);
+    const c = Number(w?.converted ?? 0);
+    const b = model.settings.base[seg];
+    const t = model.settings.stretch[seg];
+    const mk = (metric: string, base: number, stretch: number, top: number, den: number): ObservedRow => ({
+      segment: seg,
+      metric,
+      base,
+      stretch,
+      observed: den > 0 ? top / den : null,
+      n: den,
+      outreached: o,
+      enough: o >= MIN_OBSERVED_N,
+    });
+    out.push(
+      mk("Response rate (responded / outreached)", b.response, t.response, r, o),
+      mk("Proposal rate (prospective or better / responded)", b.proposalRate, t.proposalRate, p, r),
+      mk("Sign rate (converted / prospective or better)", b.signRate, t.signRate, c, p),
+    );
+  }
+  return out;
+}
+
+export async function getPlanView(ctx: Ctx): Promise<PlanView> {
+  requireHead(ctx);
+  const [model, gates, goals, warmth] = await Promise.all([
+    getPlanModel(ctx),
+    getGateReport(ctx),
+    getTeamGoals(ctx),
+    getWarmthFunnel(ctx),
+  ]);
+  return {
+    model,
+    rows: buildModelRows(model),
+    example: workedExample(model),
+    observed: observedRows(model, warmth),
+    gates,
+    goals,
+  };
+}
+===== FILE: lib\db\queries\head-a-team.ts =====
+import { requireHead } from "../guards";
+import type { Ctx } from "../../types";
+import { toIstDate } from "../../domain/bizdays";
+import { num } from "./page";
+import { coordinatorsOf, listTeam } from "./team";
+import { getCoordSummary, getNeedsUpdate } from "./views";
+import { getTeamWeekSummary } from "./weekly";
+
+export type TeamRow = {
+  memberId: string;
+  name: string;
+  totalOutreached: number;
+  thisWeek: number;
+  target: number;
+  responded: number;
+  converted: number;
+  prospective: number;
+  rejected: number;
+  ghosting: number;
+  approxInr: number;
+  finalInr: number;
+  needsUpdate: number;
+  lastActive: string | null;
+};
+
+export type TeamTableData = { weekStart: string; rows: TeamRow[]; totals: TeamRow };
+
+const SUM_KEYS = [
+  "totalOutreached",
+  "thisWeek",
+  "target",
+  "responded",
+  "converted",
+  "prospective",
+  "rejected",
+  "ghosting",
+  "approxInr",
+  "finalInr",
+  "needsUpdate",
+] as const;
+
+export async function getTeamTable(ctx: Ctx): Promise<TeamTableData> {
+  requireHead(ctx);
+  const [team, summary, week, needs] = await Promise.all([
+    listTeam(ctx.eventId),
+    getCoordSummary(ctx),
+    getTeamWeekSummary(ctx),
+    getNeedsUpdate(ctx),
+  ]);
+  const needsBy = new Map<string, number>();
+  for (const n of needs) if (n.owner_id) needsBy.set(n.owner_id, (needsBy.get(n.owner_id) ?? 0) + 1);
+
+  const rows = coordinatorsOf(team).map((m): TeamRow => {
+    const s = summary.find((r) => r.owner_id === m.id);
+    const w = week.members.find((x) => x.memberId === m.id);
+    return {
+      memberId: m.id,
+      name: m.name,
+      totalOutreached: num(s?.total_outreached),
+      thisWeek: w?.outreached ?? 0,
+      target: w?.target ?? ctx.event.weekly_target_default,
+      responded: num(s?.total_responded),
+      converted: num(s?.converted),
+      prospective: num(s?.prospective),
+      rejected: num(s?.rejected),
+      ghosting: num(s?.ghosting),
+      approxInr: num(s?.approx_amt_inr),
+      finalInr: num(s?.final_amt_inr),
+      needsUpdate: needsBy.get(m.id) ?? 0,
+      lastActive: s?.last_active_at ? toIstDate(s.last_active_at) : null,
+    };
+  });
+
+  const totals: TeamRow = {
+    memberId: "total",
+    name: "Team total",
+    totalOutreached: 0,
+    thisWeek: 0,
+    target: 0,
+    responded: 0,
+    converted: 0,
+    prospective: 0,
+    rejected: 0,
+    ghosting: 0,
+    approxInr: 0,
+    finalInr: 0,
+    needsUpdate: 0,
+    lastActive: null,
+  };
+  for (const r of rows) {
+    for (const k of SUM_KEYS) totals[k] += r[k];
+    if (r.lastActive && (!totals.lastActive || r.lastActive > totals.lastActive)) totals.lastActive = r.lastActive;
+  }
+  return { weekStart: week.weekStart, rows, totals };
+}
+===== FILE: lib\db\queries\head-b-deals.ts =====
+import { assertWritable, requireHead } from "../guards";
+import type { Ctx } from "../../types";
+import { nudgeDeal, updateDeal } from "./crm-deals";
+import { num } from "./page";
+import { listTeam } from "./team";
+import { getDealDesk } from "./views";
+
+export type DealRow = {
+  dealId: string;
+  brandId: string;
+  company: string;
+  ownerName: string;
+  stage: string;
+  proposedInr: number;
+  nextFollowUp: string | null;
+  idleBdays: number;
+  nudges: number;
+  rank: number;
+  isTop5: boolean;
+};
+
+export type DealBoard = { rows: DealRow[]; totalInr: number; top5Inr: number; top5Share: number | null; today: string };
+
+type StageArg = NonNullable<Parameters<typeof updateDeal>[2]["stage"]>;
+
+export async function getDealBoard(ctx: Ctx): Promise<DealBoard> {
+  requireHead(ctx);
+  const [desk, team] = await Promise.all([getDealDesk(ctx), listTeam(ctx.eventId)]);
+  const nameOf = new Map(team.map((m) => [m.id, m.name]));
+  const rows = desk.map(
+    (r, i): DealRow => ({
+      dealId: String(r.deal_id),
+      brandId: String(r.brand_id),
+      company: r.company,
+      ownerName: r.owner_id ? (nameOf.get(r.owner_id) ?? "Unknown") : "Unassigned",
+      stage: String(r.stage),
+      proposedInr: num(r.proposed_inr),
+      nextFollowUp: r.next_follow_up ?? null,
+      idleBdays: num(r.idle_bdays),
+      nudges: num(r.nudges),
+      rank: i + 1,
+      isTop5: i < 5,
+    }),
+  );
+  const totalInr = rows.reduce((t, r) => t + r.proposedInr, 0);
+  const top5Inr = rows.filter((r) => r.isTop5).reduce((t, r) => t + r.proposedInr, 0);
+  return { rows, totalInr, top5Inr, top5Share: totalInr > 0 ? top5Inr / totalInr : null, today: ctx.todayIst };
+}
+
+export async function setOpenStage(ctx: Ctx, dealId: string, stage: StageArg): Promise<void> {
+  requireHead(ctx);
+  assertWritable(ctx);
+  await updateDeal(ctx, dealId, { stage });
+}
+
+export async function nudgeOpenDeal(ctx: Ctx, dealId: string): Promise<void> {
+  requireHead(ctx);
+  assertWritable(ctx);
+  await nudgeDeal(ctx, dealId);
+}
+===== FILE: lib\db\queries\head-b-eod.ts =====
+import { getServiceClient } from "../client";
+import { requireHead } from "../guards";
+import type { Ctx } from "../../types";
+import { addDays, isBusinessDay } from "../../domain/bizdays";
+import { getHolidays } from "./holidays";
+import { coordinatorsOf, listTeam } from "./team";
+
+type Row = Record<string, unknown>;
+export type EodCell = "submitted" | "missing" | "pending";
+
+export type EodData = {
+  today: string;
+  days: string[];
+  members: { memberId: string; name: string; cells: EodCell[]; missingCount: number }[];
+  reports: { id: string; name: string; date: string; note: string | null; lines: string[] }[];
+};
+
+function summaryLines(value: unknown): string[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  return Object.entries(value as Row).flatMap(([k, v]) => {
+    const key = k.replace(/_/g, " ");
+    if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") return [`${key}: ${String(v)}`];
+    if (Array.isArray(v)) return [`${key}: ${v.length}`];
+    return [];
+  });
+}
+
+/** Last five business days (today included when it is one) against each coordinator. */
+export async function getEodFeed(ctx: Ctx): Promise<EodData> {
+  requireHead(ctx);
+  const [team, holidays] = await Promise.all([listTeam(ctx.eventId), getHolidays(ctx.eventId)]);
+  const members = coordinatorsOf(team);
+
+  const days: string[] = [];
+  for (let cursor = ctx.todayIst, guard = 0; days.length < 5 && guard < 30; cursor = addDays(cursor, -1), guard += 1) {
+    if (isBusinessDay(cursor, holidays)) days.unshift(cursor);
+  }
+
+  let reports: Row[] = [];
+  if (members.length > 0 && days.length > 0) {
+    const { data, error } = await getServiceClient()
+      .from("eod_reports")
+      .select("id, member_id, report_date, auto_summary, note, submitted_at")
+      .in("member_id", members.map((m) => m.id))
+      .gte("report_date", days[0] as string)
+      .order("report_date", { ascending: false });
+    if (error) throw new Error(`eod_reports: ${error.message}`);
+    reports = (data ?? []) as Row[];
+  }
+
+  const nameOf = new Map(members.map((m) => [m.id, m.name]));
+  const done = new Set(reports.map((r) => `${String(r.member_id)}|${String(r.report_date)}`));
+  const rows = members.map((m) => {
+    const cells = days.map((d): EodCell => (done.has(`${m.id}|${d}`) ? "submitted" : d === ctx.todayIst ? "pending" : "missing"));
+    return { memberId: m.id, name: m.name, cells, missingCount: cells.filter((c) => c === "missing").length };
+  });
+
+  return {
+    today: ctx.todayIst,
+    days,
+    members: rows,
+    reports: reports.map((r) => ({
+      id: String(r.id),
+      name: nameOf.get(String(r.member_id)) ?? "Unknown",
+      date: String(r.report_date),
+      note: r.note ? String(r.note) : null,
+      lines: summaryLines(r.auto_summary),
+    })),
+  };
+}
+===== FILE: lib\db\queries\head-b-inventory.ts =====
+import { requireHead } from "../guards";
+import type { Ctx } from "../../types";
+import type { SlabItem, SlabPackage } from "./head-b-slab";
+import { fetchAll, num } from "./page";
+
+type Row = Record<string, unknown>;
+
+export type CatalogItem = SlabItem & { tier: string | null; sold: boolean };
+export type CategoryRow = {
+  category: string;
+  total: number;
+  sold: number;
+  unsold: number;
+  soldMinInr: number;
+  unsoldMinInr: number;
+  unsoldMaxInr: number;
+};
+export type InventoryData = {
+  categories: CategoryRow[];
+  items: CatalogItem[];
+  packages: SlabPackage[];
+  totals: { total: number; sold: number; unsold: number; unsoldMinInr: number; unsoldMaxInr: number };
+};
+
+export async function getInventory(ctx: Ctx): Promise<InventoryData> {
+  requireHead(ctx);
+  const [catalog, pkgs] = await Promise.all([
+    fetchAll<Row>("deliverable_catalog", "id, category, name, price_min_inr, price_max_inr, tier, sold", { event_id: ctx.eventId }),
+    fetchAll<Row>("packages", "id, name, price_inr, tier_order, headline", { event_id: ctx.eventId }),
+  ]);
+  const items = catalog.map((r): CatalogItem => {
+    const min = num(r.price_min_inr);
+    const max = r.price_max_inr === null || r.price_max_inr === undefined ? min : num(r.price_max_inr);
+    return {
+      id: String(r.id),
+      name: String(r.name),
+      category: String(r.category),
+      priceMin: min,
+      priceMax: Math.max(min, max),
+      tier: r.tier ? String(r.tier) : null,
+      sold: Boolean(r.sold),
+    };
+  });
+
+  const names = [...new Set(items.map((i) => i.category))];
+  const categories = names.map((category): CategoryRow => {
+    const mine = items.filter((i) => i.category === category);
+    const sold = mine.filter((i) => i.sold);
+    const unsold = mine.filter((i) => !i.sold);
+    return {
+      category,
+      total: mine.length,
+      sold: sold.length,
+      unsold: unsold.length,
+      soldMinInr: sold.reduce((t, i) => t + i.priceMin, 0),
+      unsoldMinInr: unsold.reduce((t, i) => t + i.priceMin, 0),
+      unsoldMaxInr: unsold.reduce((t, i) => t + i.priceMax, 0),
+    };
+  });
+
+  const packages = pkgs
+    .sort((a, b) => num(a.tier_order) - num(b.tier_order))
+    .map((p): SlabPackage => ({ name: String(p.name), priceInr: num(p.price_inr), headline: p.headline ? String(p.headline) : null }));
+
+  return {
+    categories,
+    items,
+    packages,
+    totals: {
+      total: items.length,
+      sold: items.filter((i) => i.sold).length,
+      unsold: items.filter((i) => !i.sold).length,
+      unsoldMinInr: categories.reduce((t, c) => t + c.unsoldMinInr, 0),
+      unsoldMaxInr: categories.reduce((t, c) => t + c.unsoldMaxInr, 0),
+    },
+  };
+}
+===== FILE: lib\db\queries\head-b-payments.ts =====
+import { getServiceClient } from "../client";
+import { NotFoundError } from "../errors";
+import { assertWritable, requireHead } from "../guards";
+import type { Ctx } from "../../types";
+import { fetchAll, num } from "./page";
+import { listTeam } from "./team";
+
+type Row = Record<string, unknown>;
+
+export type PaymentRow = {
+  id: string;
+  dealId: string;
+  company: string;
+  ownerName: string;
+  phase: string;
+  amountInr: number;
+  dueDate: string | null;
+  receivedAt: string | null;
+  note: string | null;
+};
+
+export type PhaseTotals = { phase: string; scheduledInr: number; collectedInr: number; pendingInr: number };
+export type PaymentsData = {
+  rows: PaymentRow[];
+  scheduledInr: number;
+  collectedInr: number;
+  pendingInr: number;
+  byPhase: PhaseTotals[];
+};
+
+/** Payments have no event column, so they are scoped through the event's confirmed deals. */
+export async function getPaymentsData(ctx: Ctx): Promise<PaymentsData> {
+  requireHead(ctx);
+  const supabase = getServiceClient();
+  const [deals, brands, team] = await Promise.all([
+    fetchAll<Row>("deals", "id, name, brand_id, owner_id", { event_id: ctx.eventId, stage: "partner_confirmed" }),
+    fetchAll<Row>("brands", "id, name", { event_id: ctx.eventId }),
+    listTeam(ctx.eventId),
+  ]);
+  const brandName = new Map(brands.map((b) => [String(b.id), String(b.name)]));
+  const nameOf = new Map(team.map((m) => [m.id, m.name]));
+  const dealById = new Map(deals.map((d) => [String(d.id), d]));
+
+  const ids = [...dealById.keys()];
+  const pays: Row[] = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await supabase
+      .from("payments")
+      .select("id, deal_id, amount_inr, due_date, received_at, note, phase")
+      .in("deal_id", ids.slice(i, i + 100))
+      .order("due_date");
+    if (error) throw new Error(`payments: ${error.message}`);
+    pays.push(...((data ?? []) as Row[]));
+  }
+
+  const rows = pays.map((p): PaymentRow => {
+    const d = dealById.get(String(p.deal_id)) ?? {};
+    const owner = d.owner_id ? String(d.owner_id) : null;
+    return {
+      id: String(p.id),
+      dealId: String(p.deal_id),
+      company: brandName.get(String(d.brand_id)) ?? String(d.name ?? "Unknown"),
+      ownerName: owner ? (nameOf.get(owner) ?? "Unknown") : "Unassigned",
+      phase: String(p.phase ?? ""),
+      amountInr: num(p.amount_inr),
+      dueDate: p.due_date ? String(p.due_date) : null,
+      receivedAt: p.received_at ? String(p.received_at) : null,
+      note: p.note ? String(p.note) : null,
+    };
+  });
+
+  const phases = [...new Set(rows.map((r) => r.phase))].sort();
+  const byPhase = phases.map((phase): PhaseTotals => {
+    const mine = rows.filter((r) => r.phase === phase);
+    const scheduledInr = mine.reduce((t, r) => t + r.amountInr, 0);
+    const collectedInr = mine.filter((r) => r.receivedAt).reduce((t, r) => t + r.amountInr, 0);
+    return { phase, scheduledInr, collectedInr, pendingInr: scheduledInr - collectedInr };
+  });
+  const scheduledInr = rows.reduce((t, r) => t + r.amountInr, 0);
+  const collectedInr = rows.filter((r) => r.receivedAt).reduce((t, r) => t + r.amountInr, 0);
+  return { rows, scheduledInr, collectedInr, pendingInr: scheduledInr - collectedInr, byPhase };
+}
+
+/** Only the head marks payments received. Undo clears received_at. */
+export async function setPaymentReceived(ctx: Ctx, paymentId: string, received: boolean): Promise<void> {
+  requireHead(ctx);
+  assertWritable(ctx);
+  const supabase = getServiceClient();
+  const pay = await supabase.from("payments").select("id, deal_id").eq("id", paymentId).maybeSingle();
+  if (pay.error) throw new Error(`payments: ${pay.error.message}`);
+  if (!pay.data) throw new NotFoundError("Payment not found");
+  const deal = await supabase.from("deals").select("id").eq("id", pay.data.deal_id).eq("event_id", ctx.eventId).maybeSingle();
+  if (deal.error) throw new Error(`deals: ${deal.error.message}`);
+  if (!deal.data) throw new NotFoundError("Payment not found for this event");
+  const res = await supabase
+    .from("payments")
+    .update({ received_at: received ? new Date().toISOString() : null })
+    .eq("id", paymentId);
+  if (res.error) throw new Error(`payments: ${res.error.message}`);
+}
+===== FILE: lib\db\queries\head-b-slab.ts =====
+export type SlabPackage = { name: string; priceInr: number; headline: string | null };
+export type SlabItem = { id: string; name: string; category: string; priceMin: number; priceMax: number };
+export type SlabSuggestion = { pkg: SlabPackage | null; addons: SlabItem[]; spentInr: number; leftoverInr: number };
+
+/** Largest package within budget, then unsold catalogue add-ons (at minimum price) with what is left. */
+export function suggestSlab(budget: number, packages: SlabPackage[], unsold: SlabItem[]): SlabSuggestion {
+  if (!(budget > 0)) return { pkg: null, addons: [], spentInr: 0, leftoverInr: 0 };
+  const pkg = [...packages].filter((p) => p.priceInr <= budget).sort((a, b) => b.priceInr - a.priceInr)[0] ?? null;
+  let left = budget - (pkg?.priceInr ?? 0);
+  const addons: SlabItem[] = [];
+  for (const it of [...unsold].sort((a, b) => b.priceMin - a.priceMin)) {
+    if (addons.length >= 6) break;
+    if (it.priceMin > 0 && it.priceMin <= left) {
+      addons.push(it);
+      left -= it.priceMin;
+    }
+  }
+  return { pkg, addons, spentInr: budget - left, leftoverInr: left };
+}
+===== FILE: lib\db\queries\holidays.ts =====
+import { getServiceClient } from "@/lib/db/client";
+import type { Holiday } from "@/lib/domain/bizdays";
+
+export async function getHolidays(eventId: string): Promise<Holiday[]> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.from("holidays").select("day").eq("event_id", eventId);
+  if (error) throw new Error(`holidays: ${error.message}`);
+  return (data ?? []).map((row) => ({ day: String(row.day) }));
+}
+===== FILE: lib\db\queries\index.ts =====
+export * from "./ctx";
+export * from "./events";
+export * from "./holidays";
+export * from "./settings";
+export * from "./team";
+export * from "./views";
+export * from "./weekly";
+export * from "./plan";
+export * from "./overview";
+export * from "./initiatives";
+export * from "./decisions";
+===== FILE: lib\db\queries\initiatives.ts =====
+import { requireHead } from "../guards";
+import type { Ctx } from "../../types";
+import { dateNum, isRuleJson, type Metrics, type RuleJson } from "../../domain/rules-engine";
+import { evaluateInitiative, type InitiativeRules } from "../../domain/initiatives";
+import {
+  cashTermsMetrics,
+  dealDeskMetrics,
+  experimentArms,
+  laneMetrics,
+  PLAN_START,
+  type Experiment,
+  type MetricSet,
+} from "../../model/derive";
+import { fetchAll, num } from "./page";
+import { getBrandRows, getSignedDeals } from "./plan";
+import { getDealDesk, getInitiativeFunnel } from "./views";
+
+type Evaluation = ReturnType<typeof evaluateInitiative>;
+type CodeArg = Parameters<typeof evaluateInitiative>[0];
+
+export type InitiativeStatus = {
+  campaignId: string;
+  code: string;
+  name: string;
+  badge: Evaluation["badge"];
+  reason: Evaluation["reason"];
+  evaluation: Evaluation;
+  metrics: Metrics;
+  experiment: Experiment | null;
+};
+
+const asRule = (value: unknown): RuleJson | null => (isRuleJson(value) ? value : null);
+
+/** The five bets with their live badge. Rules come from campaigns.scale_rule / change_rule / stop_rule. */
+export async function getInitiativeStatuses(ctx: Ctx): Promise<InitiativeStatus[]> {
+  requireHead(ctx);
+  const [campaigns, funnel, desk, signed, brands, drafts, events] = await Promise.all([
+    fetchAll<Record<string, unknown>>("campaigns", "id, source_id, name, scale_rule, change_rule, stop_rule", {
+      event_id: ctx.eventId,
+      kind: "initiative",
+    }),
+    getInitiativeFunnel(ctx),
+    getDealDesk(ctx),
+    getSignedDeals(ctx),
+    getBrandRows(ctx),
+    fetchAll<Record<string, unknown>>("email_drafts", "brand_id, personalised, status", { event_id: ctx.eventId }),
+    fetchAll<Record<string, unknown>>("status_events", "brand_id, to_status", { event_id: ctx.eventId }),
+  ]);
+
+  const today = dateNum(ctx.todayIst);
+  const deskRows = desk.map((r) => ({
+    company: r.company,
+    stage: String(r.stage),
+    proposed_inr: num(r.proposed_inr),
+    idle_bdays: num(r.idle_bdays),
+    nudges: num(r.nudges),
+  }));
+  const draftRows = drafts.map((r) => ({ brand_id: String(r.brand_id), personalised: Boolean(r.personalised), status: String(r.status) }));
+  const eventRows = events.map((r) => ({ brand_id: String(r.brand_id), to_status: String(r.to_status) }));
+
+  const out: InitiativeStatus[] = [];
+  for (const c of campaigns) {
+    const campaignId = String(c.id);
+    const code = String(c.source_id);
+    let set: MetricSet = { metrics: { today }, counts: {} };
+    let experiment: Experiment | null = null;
+
+    if (code === "bet-1") {
+      set = dealDeskMetrics(deskRows, today);
+    } else if (code === "bet-2") {
+      set = cashTermsMetrics(signed, PLAN_START, today);
+    } else {
+      set = laneMetrics(funnel.find((f) => f.initiative_id === campaignId), today);
+      if (code === "bet-5") {
+        const ids = new Set(brands.filter((b) => b.initiative_id === campaignId).map((b) => b.id));
+        experiment = experimentArms(ids, draftRows, eventRows);
+        set = {
+          metrics: { ...set.metrics, personalised_vs_template_ratio: experiment.ratio },
+          counts: {
+            ...set.counts,
+            personalised_vs_template_ratio:
+              experiment.ratio === undefined
+                ? `personalised ${experiment.personalised.n} sent vs template ${experiment.template.n} sent`
+                : `personalised ${experiment.personalised.reached} of ${experiment.personalised.n} vs template ${experiment.template.reached} of ${experiment.template.n} reached proposal`,
+          },
+        };
+      }
+    }
+
+    const rules: InitiativeRules = { scale: asRule(c.scale_rule), change: asRule(c.change_rule), stop: asRule(c.stop_rule) };
+    const evaluation = evaluateInitiative(code as CodeArg, rules, set.metrics, set.counts);
+    out.push({
+      campaignId,
+      code,
+      name: String(c.name),
+      badge: evaluation.badge,
+      reason: evaluation.reason,
+      evaluation,
+      metrics: set.metrics,
+      experiment,
+    });
+  }
+  return out.sort((a, b) => a.code.localeCompare(b.code));
+}
+===== FILE: lib\db\queries\overview.ts =====
+import { requireHead } from "../guards";
+import type { Ctx } from "../../types";
+import { buildKpis, type BrandRow, type Kpis, type WarmthRow } from "../../model/derive";
+import { fetchAll, num } from "./page";
+import { getBrandRows, getSignedDeals } from "./plan";
+
+export type HeadKpis = Kpis & {
+  prospective: { count: number; inr: number };
+  signedInr: number;
+  signedDeals: number;
+  cashScheduledInr: number;
+  cashCollectedInr: number;
+  cashPendingInr: number;
+};
+
+export async function getHeadKpis(ctx: Ctx): Promise<HeadKpis> {
+  requireHead(ctx);
+  const [warmth, cash, brands, signed] = await Promise.all([
+    fetchAll<Record<string, unknown>>("v_warmth_funnel", "*", { event_id: ctx.eventId }),
+    fetchAll<Record<string, unknown>>("v_cash_summary", "*", { event_id: ctx.eventId }),
+    getBrandRows(ctx),
+    getSignedDeals(ctx),
+  ]);
+  const rows: WarmthRow[] = warmth.map((r) => ({
+    companies: num(r.companies),
+    outreached: num(r.outreached),
+    responded: num(r.responded),
+    prospective_or_better: num(r.prospective_or_better),
+    converted: num(r.converted),
+  }));
+  const sum = (key: string): number => cash.reduce((t, r) => t + num(r[key]), 0);
+  const scheduled = sum("pre_fest_scheduled_inr") + sum("post_fest_scheduled_inr");
+  const collected = sum("pre_fest_collected_inr") + sum("post_fest_collected_inr");
+  const prospects: BrandRow[] = brands.filter((b) => b.crm_status === "prospective");
+  return {
+    ...buildKpis(rows),
+    prospective: { count: prospects.length, inr: prospects.reduce((t, b) => t + b.approx_amount_inr, 0) },
+    signedInr: signed.reduce((t, d) => t + d.amountInr, 0),
+    signedDeals: signed.length,
+    cashScheduledInr: scheduled,
+    cashCollectedInr: collected,
+    cashPendingInr: scheduled - collected,
+  };
+}
+===== FILE: lib\db\queries\page.ts =====
+import { getServiceClient } from "../client";
+
+/** Reads every row of a table or view (1000 per page), filtered by equality. */
+export async function fetchAll<T>(table: string, select: string, eq: Record<string, string> = {}): Promise<T[]> {
+  const supabase = getServiceClient();
+  const out: T[] = [];
+  for (let from = 0; ; from += 1000) {
+    let query = supabase.from(table).select(select).range(from, from + 999);
+    for (const [column, value] of Object.entries(eq)) query = query.eq(column, value);
+    const { data, error } = await query;
+    if (error) throw new Error(`${table}: ${error.message}`);
+    const rows = (data ?? []) as unknown as T[];
+    out.push(...rows);
+    if (rows.length < 1000) break;
+  }
+  return out;
+}
+
+export const num = (value: unknown): number => Number(value ?? 0);
+===== FILE: lib\db\queries\plan.ts =====
+import { requireHead } from "../guards";
+import type { Ctx } from "../../types";
+import { toIstDate } from "../../domain/bizdays";
+import { attributeStretch, type Attribution } from "../../model/attribution";
+import {
+  closingOnlyPhase,
+  gateStatuses,
+  missedBaseGate,
+  paceLine,
+  signedAsOf,
+  type Gate,
+  type GateStatus,
+  type PacePoint,
+} from "../../model/gates";
+import { PLAN_END, PLAN_START, buildPlanState, leadSupply, type BrandRow, type LeadSupply, type SignedDeal } from "../../model/derive";
+import { DEFAULT_SETTINGS, mergeSettings, projectPlan, type ModelSettings, type PlanProjection, type PlanState } from "../../model/projection";
+import { fetchAll, num } from "./page";
+
+type SettingsPatch = Parameters<typeof mergeSettings>[0];
+
+/** Plan settings live in events.model_assumptions.plan (same shape as ModelSettings, every field optional). */
+export function getPlanSettings(ctx: Ctx, patch: SettingsPatch = {}): ModelSettings {
+  const stored = ctx.event.model_assumptions.plan;
+  const base = stored && typeof stored === "object" ? mergeSettings(stored as SettingsPatch, DEFAULT_SETTINGS) : DEFAULT_SETTINGS;
+  return mergeSettings(patch, base);
+}
+
+export async function getBrandRows(ctx: Ctx): Promise<BrandRow[]> {
+  const rows = await fetchAll<Record<string, unknown>>(
+    "brands",
+    "id, name, owner_id, crm_status, source_channel, approx_amount_inr, first_outreach_at, last_touch_at, next_follow_up, initiative_id",
+    { event_id: ctx.eventId },
+  );
+  return rows
+    .filter((r) => r.crm_status !== null)
+    .map((r) => ({
+      id: String(r.id),
+      name: String(r.name),
+      owner_id: (r.owner_id as string | null) ?? null,
+      crm_status: (r.crm_status as string | null) ?? null,
+      source_channel: (r.source_channel as string | null) ?? null,
+      approx_amount_inr: num(r.approx_amount_inr),
+      first_outreach_at: (r.first_outreach_at as string | null) ?? null,
+      last_touch_at: (r.last_touch_at as string | null) ?? null,
+      next_follow_up: (r.next_follow_up as string | null) ?? null,
+      initiative_id: (r.initiative_id as string | null) ?? null,
+    }));
+}
+
+/** Confirmed deals. The confirmation date is the MoU date, else the day the stage changed. */
+export async function getSignedDeals(ctx: Ctx): Promise<SignedDeal[]> {
+  const rows = await fetchAll<Record<string, unknown>>(
+    "deals",
+    "id, brand_id, signed_value_inr, signed_cash_inr, signed_in_kind_inr, mou_signed_at, stage_changed_at, created_at",
+    { event_id: ctx.eventId, stage: "partner_confirmed" },
+  );
+  return rows.map((r) => ({
+    dealId: String(r.id),
+    brandId: String(r.brand_id),
+    amountInr: num(r.signed_value_inr),
+    cashInr: num(r.signed_cash_inr),
+    inKindInr: num(r.signed_in_kind_inr),
+    confirmedOn: r.mou_signed_at ? String(r.mou_signed_at) : toIstDate(String(r.stage_changed_at ?? r.created_at)),
+  }));
+}
+
+export async function getPlanState(ctx: Ctx): Promise<PlanState> {
+  requireHead(ctx);
+  const [brands, signed] = await Promise.all([getBrandRows(ctx), getSignedDeals(ctx)]);
+  return buildPlanState(brands, signed);
+}
+
+export type PlanModel = {
+  settings: ModelSettings;
+  state: PlanState;
+  projection: PlanProjection;
+  attribution: Attribution;
+  leadSupply: LeadSupply;
+  planStart: string;
+  planEnd: string;
+};
+
+/** Everything the Plan tab needs. Pass a patch for what-if runs (chatbot run_projection). */
+export async function getPlanModel(ctx: Ctx, patch: SettingsPatch = {}): Promise<PlanModel> {
+  requireHead(ctx);
+  const [brands, signed] = await Promise.all([getBrandRows(ctx), getSignedDeals(ctx)]);
+  const settings = getPlanSettings(ctx, patch);
+  const state = buildPlanState(brands, signed);
+  return {
+    settings,
+    state,
+    projection: projectPlan(state, settings),
+    attribution: attributeStretch(state, settings),
+    leadSupply: leadSupply(brands, settings),
+    planStart: PLAN_START,
+    planEnd: PLAN_END,
+  };
+}
+
+export async function getGates(ctx: Ctx): Promise<Gate[]> {
+  const rows = await fetchAll<Record<string, unknown>>("portfolio_gates", "gate_date, base_signed_inr, stretch_signed_inr", { event_id: ctx.eventId });
+  return rows
+    .map((r) => ({ gateOn: String(r.gate_date), baseInr: num(r.base_signed_inr), stretchInr: num(r.stretch_signed_inr) }))
+    .sort((a, b) => a.gateOn.localeCompare(b.gateOn));
+}
+
+export type GateReport = {
+  statuses: GateStatus[];
+  closingOnly: boolean;
+  missed: GateStatus | null;
+  pace: PacePoint[];
+  actualToday: number;
+  signedByDay: { date: string; cumulativeInr: number }[];
+};
+
+export async function getGateReport(ctx: Ctx): Promise<GateReport> {
+  requireHead(ctx);
+  const [gates, signed, model] = await Promise.all([getGates(ctx), getSignedDeals(ctx), getPlanModel(ctx)]);
+  const deals = signed.map((d) => ({ confirmedOn: d.confirmedOn, amountInr: d.amountInr }));
+  const statuses = gateStatuses(gates, deals, ctx.todayIst);
+  const actualToday = signedAsOf(deals, ctx.todayIst);
+  const days = [...new Set(deals.map((d) => d.confirmedOn))].sort();
+  return {
+    statuses,
+    closingOnly: closingOnlyPhase(gates, ctx.todayIst),
+    missed: missedBaseGate(statuses),
+    pace: paceLine(gates, ctx.todayIst, actualToday, PLAN_END, model.projection.base.signed, model.projection.stretch.signed),
+    actualToday,
+    signedByDay: days.map((date) => ({ date, cumulativeInr: signedAsOf(deals, date) })),
+  };
+}
+
+export async function getLeadSupply(ctx: Ctx): Promise<LeadSupply> {
+  requireHead(ctx);
+  return leadSupply(await getBrandRows(ctx), getPlanSettings(ctx));
+}
+===== FILE: lib\db\queries\settings.ts =====
+import { getServiceClient } from "@/lib/db/client";
+import { addBusinessDays } from "@/lib/domain/bizdays";
+import type { StatusCode } from "@/lib/domain/status";
+import { getHolidays } from "@/lib/db/queries/holidays";
+import { resolveAssumptions, type ModelAssumptions } from "@/lib/model/assumptions";
+import type { Ctx, StaleRule, TeamGoal } from "@/lib/types";
+
+export function getAssumptions(ctx: Ctx): ModelAssumptions {
+  return resolveAssumptions(ctx.event.model_assumptions);
+}
+
+export async function getStaleRules(ctx: Ctx): Promise<StaleRule[]> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase
+    .from("stale_rules")
+    .select("state_key, days_threshold")
+    .eq("event_id", ctx.eventId);
+  if (error) throw new Error(`stale_rules: ${error.message}`);
+  return (data ?? []).map((row) => ({
+    state_key: String(row.state_key),
+    days_threshold: Number(row.days_threshold),
+  }));
+}
+
+/** Default next follow-up: today plus the status threshold in business days (null if no rule). */
+export async function getDefaultFollowUp(ctx: Ctx, status: StatusCode): Promise<string | null> {
+  const [rules, holidays] = await Promise.all([getStaleRules(ctx), getHolidays(ctx.eventId)]);
+  const rule = rules.find((r) => r.state_key === status);
+  return rule ? addBusinessDays(ctx.todayIst, rule.days_threshold, holidays) : null;
+}
+
+export async function getTeamGoals(ctx: Ctx): Promise<{ base: TeamGoal | null; stretch: TeamGoal | null }> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase
+    .from("targets")
+    .select("scenario, signed_value_goal_inr, cash_collected_goal_inr, version_label, effective_at")
+    .eq("event_id", ctx.eventId)
+    .order("effective_at", { ascending: false });
+  if (error) throw new Error(`targets: ${error.message}`);
+  const pick = (scenario: "base" | "stretch"): TeamGoal | null => {
+    const row = (data ?? []).find((r) => r.scenario === scenario);
+    if (!row) return null;
+    return {
+      scenario,
+      signed_value_goal_inr: row.signed_value_goal_inr === null ? null : Number(row.signed_value_goal_inr),
+      cash_collected_goal_inr: row.cash_collected_goal_inr === null ? null : Number(row.cash_collected_goal_inr),
+      version_label: (row.version_label as string | null) ?? null,
+    };
+  };
+  return { base: pick("base"), stretch: pick("stretch") };
+}
+===== FILE: lib\db\queries\team.ts =====
+import { getServiceClient } from "@/lib/db/client";
+import type { TeamMember } from "@/lib/types";
+
+export async function listTeam(eventId: string): Promise<TeamMember[]> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase
+    .from("team_members")
+    .select("id, source_id, name, role, is_closer")
+    .eq("event_id", eventId)
+    .order("name");
+  if (error) throw new Error(`team_members: ${error.message}`);
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    source_id: (row.source_id as string | null) ?? null,
+    name: String(row.name),
+    role: row.role === "manager" ? "manager" : "member",
+    is_closer: Boolean(row.is_closer),
+  }));
+}
+
+export function coordinatorsOf(team: TeamMember[]): TeamMember[] {
+  return team.filter((member) => member.role === "member");
+}
+===== FILE: lib\db\queries\views.ts =====
+import { getServiceClient } from "@/lib/db/client";
+import { requireHead, scopeOwner } from "@/lib/db/guards";
+import type {
+  CashSummaryRow,
+  ChannelFunnelRow,
+  CoordSummaryRow,
+  Ctx,
+  DealDeskRow,
+  InitiativeFunnelRow,
+  NeedsUpdateRow,
+  WarmthFunnelRow,
+  WeeklyProgressRow,
+} from "@/lib/types";
+
+async function viewRows<T>(view: string, eventId: string, ownerId: string | null): Promise<T[]> {
+  const supabase = getServiceClient();
+  let query = supabase.from(view).select("*").eq("event_id", eventId);
+  if (ownerId) query = query.eq("owner_id", ownerId);
+  const { data, error } = await query;
+  if (error) throw new Error(`${view}: ${error.message}`);
+  return (data ?? []) as T[];
+}
+
+/** Companies needing an update (business days), biggest amount at risk first. */
+export async function getNeedsUpdate(ctx: Ctx, ownerId?: string | null): Promise<NeedsUpdateRow[]> {
+  const owner = scopeOwner(ctx, ownerId);
+  const rows = await viewRows<NeedsUpdateRow>("v_needs_update", ctx.eventId, owner);
+  return rows.sort(
+    (a, b) => (b.approx_amount_inr ?? 0) - (a.approx_amount_inr ?? 0) || b.idle_bdays - a.idle_bdays,
+  );
+}
+
+export async function getWeeklyProgress(ctx: Ctx, ownerId?: string | null): Promise<WeeklyProgressRow[]> {
+  return viewRows<WeeklyProgressRow>("v_weekly_progress", ctx.eventId, scopeOwner(ctx, ownerId));
+}
+
+export async function getCoordSummary(ctx: Ctx, ownerId?: string | null): Promise<CoordSummaryRow[]> {
+  return viewRows<CoordSummaryRow>("v_coord_summary", ctx.eventId, scopeOwner(ctx, ownerId));
+}
+
+export async function getCashSummary(ctx: Ctx, ownerId?: string | null): Promise<CashSummaryRow[]> {
+  return viewRows<CashSummaryRow>("v_cash_summary", ctx.eventId, scopeOwner(ctx, ownerId));
+}
+
+/** Closers see every open deal; other coordinators only their own; the head sees all. */
+export async function getDealDesk(ctx: Ctx, ownerId?: string | null): Promise<DealDeskRow[]> {
+  const owner = ctx.role === "coordinator" && ctx.isCloser ? (ownerId ?? null) : scopeOwner(ctx, ownerId);
+  const rows = await viewRows<DealDeskRow>("v_deal_desk", ctx.eventId, owner);
+  return rows.sort((a, b) => b.proposed_inr - a.proposed_inr);
+}
+
+/** Team-level views below are head only (they have no owner column). */
+export async function getChannelFunnel(ctx: Ctx): Promise<ChannelFunnelRow[]> {
+  requireHead(ctx);
+  return viewRows<ChannelFunnelRow>("v_crm_funnel_by_channel", ctx.eventId, null);
+}
+
+export async function getInitiativeFunnel(ctx: Ctx): Promise<InitiativeFunnelRow[]> {
+  requireHead(ctx);
+  return viewRows<InitiativeFunnelRow>("v_initiative_funnel", ctx.eventId, null);
+}
+
+export async function getWarmthFunnel(ctx: Ctx): Promise<WarmthFunnelRow[]> {
+  requireHead(ctx);
+  return viewRows<WarmthFunnelRow>("v_warmth_funnel", ctx.eventId, null);
+}
+===== FILE: lib\db\queries\weekly.ts =====
+import { getServiceClient } from "@/lib/db/client";
+import { requireHead, scopeOwner } from "@/lib/db/guards";
+import { ValidationError } from "@/lib/db/errors";
+import { businessDaysLeftInWeek, weekEndIST, weekStartIST } from "@/lib/domain/bizdays";
+import { getHolidays } from "@/lib/db/queries/holidays";
+import { coordinatorsOf, listTeam } from "@/lib/db/queries/team";
+import { getWeeklyProgress } from "@/lib/db/queries/views";
+import type { Ctx, TeamWeekSummary, WeeklyStrip } from "@/lib/types";
+
+export async function getWeeklyTarget(
+  ctx: Ctx,
+  memberId: string,
+  weekStart: string,
+): Promise<{ target: number; label: string; source: "row" | "default" }> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase
+    .from("weekly_targets")
+    .select("target_outreach, label")
+    .eq("event_id", ctx.eventId)
+    .eq("member_id", memberId)
+    .eq("week_start", weekStart)
+    .maybeSingle();
+  if (error) throw new Error(`weekly_targets: ${error.message}`);
+  if (data) return { target: Number(data.target_outreach), label: String(data.label ?? "normal"), source: "row" };
+  return { target: ctx.event.weekly_target_default, label: "normal", source: "default" };
+}
+
+/** Everything the coordinator weekly strip needs, from one place. */
+export async function getWeeklyStrip(ctx: Ctx, memberId?: string | null): Promise<WeeklyStrip> {
+  const owner = scopeOwner(ctx, memberId ?? ctx.memberId);
+  if (!owner) throw new ValidationError("A coordinator must be selected.");
+  const weekStart = weekStartIST(ctx.todayIst);
+  const [holidays, tgt, progress] = await Promise.all([
+    getHolidays(ctx.eventId),
+    getWeeklyTarget(ctx, owner, weekStart),
+    getWeeklyProgress(ctx, owner),
+  ]);
+  const row = progress.find((r) => r.week_start === weekStart);
+  const outreached = row?.outreached ?? 0;
+  const responded = row?.responded ?? 0;
+  const left = businessDaysLeftInWeek(ctx.todayIst, holidays);
+  const remaining = Math.max(0, tgt.target - outreached);
+  return {
+    weekStart,
+    weekEnd: weekEndIST(weekStart),
+    target: tgt.target,
+    label: tgt.label,
+    source: tgt.source,
+    outreached,
+    responded,
+    responseRate: outreached > 0 ? responded / outreached : null,
+    businessDaysLeft: left,
+    remaining,
+    requiredPerDay: left > 0 ? remaining / left : null,
+  };
+}
+
+/** Head dashboard chip: team outreached vs team target this week. */
+export async function getTeamWeekSummary(ctx: Ctx): Promise<TeamWeekSummary> {
+  requireHead(ctx);
+  const weekStart = weekStartIST(ctx.todayIst);
+  const supabase = getServiceClient();
+  const [team, progress, targets] = await Promise.all([
+    listTeam(ctx.eventId),
+    getWeeklyProgress(ctx),
+    supabase
+      .from("weekly_targets")
+      .select("member_id, target_outreach")
+      .eq("event_id", ctx.eventId)
+      .eq("week_start", weekStart),
+  ]);
+  if (targets.error) throw new Error(`weekly_targets: ${targets.error.message}`);
+  const members = coordinatorsOf(team).map((m) => {
+    const target = targets.data?.find((t) => t.member_id === m.id)?.target_outreach;
+    const p = progress.find((r) => r.owner_id === m.id && r.week_start === weekStart);
+    return {
+      memberId: m.id,
+      name: m.name,
+      target: target === undefined ? ctx.event.weekly_target_default : Number(target),
+      outreached: p?.outreached ?? 0,
+      responded: p?.responded ?? 0,
+    };
+  });
+  return {
+    weekStart,
+    outreached: members.reduce((sum, m) => sum + m.outreached, 0),
+    responded: members.reduce((sum, m) => sum + m.responded, 0),
+    target: members.reduce((sum, m) => sum + m.target, 0),
+    members,
+  };
+}
+===== FILE: lib\domain\bizdays.ts =====
+export type Holiday = { day: string };
+
+const DAY_MS = 86_400_000;
+const istFormat = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Kolkata",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function parseIso(iso: string): number {
+  const [y, m, d] = iso.split("-").map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
+function formatMs(ms: number): string {
+  const d = new Date(ms);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function holidaySet(holidays: Holiday[]): Set<string> {
+  return new Set(holidays.map((h) => h.day));
+}
+
+export function toIstDate(value: string | Date): string {
+  return istFormat.format(typeof value === "string" ? new Date(value) : value);
+}
+
+export function todayIST(now: Date = new Date()): string {
+  return istFormat.format(now);
+}
+
+export function addDays(iso: string, days: number): string {
+  return formatMs(parseIso(iso) + days * DAY_MS);
+}
+
+export function daysBetween(start: string, end: string): number {
+  return Math.round((parseIso(end) - parseIso(start)) / DAY_MS);
+}
+
+export function isoDow(iso: string): number {
+  const dow = new Date(parseIso(iso)).getUTCDay();
+  return dow === 0 ? 7 : dow;
+}
+
+export function isBusinessDay(iso: string, holidays: Holiday[] = []): boolean {
+  return isoDow(iso) <= 5 && !holidaySet(holidays).has(iso);
+}
+
+/** Business days AFTER start, up to and including end (matches SQL business_days_between). */
+export function businessDaysBetween(start: string, end: string, holidays: Holiday[] = []): number {
+  if (end <= start) return 0;
+  const hs = holidaySet(holidays);
+  const last = parseIso(end);
+  let count = 0;
+  for (let ms = parseIso(start) + DAY_MS; ms <= last; ms += DAY_MS) {
+    const dow = new Date(ms).getUTCDay();
+    if (dow !== 0 && dow !== 6 && !hs.has(formatMs(ms))) count += 1;
+  }
+  return count;
+}
+
+export function addBusinessDays(start: string, days: number, holidays: Holiday[] = []): string {
+  const hs = holidaySet(holidays);
+  let ms = parseIso(start);
+  let remaining = Math.max(0, Math.floor(days));
+  while (remaining > 0) {
+    ms += DAY_MS;
+    const dow = new Date(ms).getUTCDay();
+    if (dow !== 0 && dow !== 6 && !hs.has(formatMs(ms))) remaining -= 1;
+  }
+  return formatMs(ms);
+}
+
+export function weekStartIST(iso: string): string {
+  return addDays(iso, -(isoDow(iso) - 1));
+}
+
+export function weekEndIST(iso: string): string {
+  return addDays(weekStartIST(iso), 6);
+}
+
+/** Business days left in the Mon-Sun week, counting today if it is a business day. */
+export function businessDaysLeftInWeek(iso: string, holidays: Holiday[] = []): number {
+  return businessDaysBetween(iso, weekEndIST(iso), holidays) + (isBusinessDay(iso, holidays) ? 1 : 0);
+}
+===== FILE: lib\domain\channels.ts =====
+export const CHANNELS = [
+  "past_sponsors",
+  "other_fest",
+  "artist_linked",
+  "agency",
+  "csr",
+  "new_local",
+  "ipl_sports",
+  "institute",
+  "cold_database",
+  "inbound_referral",
+] as const;
+
+export type ChannelCode = (typeof CHANNELS)[number];
+
+export const CHANNEL_LABELS: Record<ChannelCode, string> = {
+  past_sponsors: "Past sponsors",
+  other_fest: "Other fest",
+  artist_linked: "Artist linked",
+  agency: "Agency",
+  csr: "CSR",
+  new_local: "New local",
+  ipl_sports: "IPL / sports",
+  institute: "Institute",
+  cold_database: "Cold database",
+  inbound_referral: "Inbound / referral",
+};
+
+export const WARM_CHANNELS: ReadonlySet<ChannelCode> = new Set([
+  "past_sponsors",
+  "other_fest",
+  "artist_linked",
+  "inbound_referral",
+  "institute",
+]);
+
+export function channelToInitiative(channel: ChannelCode): string {
+  if (channel === "artist_linked") return "bet-4";
+  if (
+    channel === "past_sponsors" ||
+    channel === "other_fest" ||
+    channel === "inbound_referral" ||
+    channel === "institute"
+  ) {
+    return "bet-3";
+  }
+  return "bet-5";
+}
+
+===== FILE: lib\domain\crm-rules.ts =====
+import { STATUS_CODES, STATUS_LABELS, type StatusCode } from "./status";
+
+export const TERMINAL_STATUSES: StatusCode[] = ["converted", "rejected", "left_company", "wrong_number"];
+
+export type StatusChangeInput = {
+  brandId: string;
+  to: StatusCode;
+  note?: string | null;
+  approxAmountInr?: number | null;
+  nextFollowUp?: string | null;
+  finalAmountInr?: number | null;
+  inKindInr?: number | null;
+  rejectionReason?: string | null;
+};
+
+/** Mirrors the database guards (Didn't Pick and Ghosting) and adds the owner's flow rules. */
+export function isLegalTransition(from: StatusCode, to: StatusCode): boolean {
+  if (from === to) return false;
+  if (TERMINAL_STATUSES.includes(from)) return false;
+  switch (to) {
+    case "to_contact":
+      return false;
+    case "send_mail":
+      return from === "to_contact";
+    case "slabs_sent":
+    case "didnt_pick":
+      return from === "to_contact" || from === "send_mail";
+    case "ghosting":
+      return from === "contacted" || from === "prospective";
+    case "converted":
+      return from === "prospective" || from === "contacted" || from === "ghosting";
+    default:
+      return true;
+  }
+}
+
+/** Statuses a coordinator can pick from the dropdown. Slabs sent is set by "Mark mail sent", not here. */
+export function legalNextStatuses(from: StatusCode): StatusCode[] {
+  return STATUS_CODES.filter((s) => s !== "slabs_sent" && isLegalTransition(from, s));
+}
+
+/** Returns a friendly message for the first problem, or null when the change is allowed. */
+export function validateTransition(from: StatusCode, input: StatusChangeInput): string | null {
+  const to = input.to;
+  if (TERMINAL_STATUSES.includes(from)) return `${STATUS_LABELS[from]} is final, so this company can't be moved.`;
+  if (!isLegalTransition(from, to)) {
+    if (to === "didnt_pick") return "Didn't Pick is only valid from To Contact or Send Mail.";
+    if (to === "ghosting") return "Ghosting is only valid from Contacted or Prospective.";
+    if (to === "converted") return "Converted needs the company to be Prospective, Contacted or Ghosting first.";
+    return `Can't move from ${STATUS_LABELS[from]} to ${STATUS_LABELS[to]}.`;
+  }
+  if (to === "prospective" && !((input.approxAmountInr ?? 0) > 0)) return "Prospective needs an approximate amount.";
+  if (to === "converted") {
+    const final = input.finalAmountInr ?? 0;
+    const inKind = input.inKindInr ?? 0;
+    if (!(final > 0)) return "Converted needs the final amount.";
+    if (inKind < 0 || inKind > final) return "In-kind must be between zero and the final amount.";
+  }
+  if (to === "rejected" && !(input.rejectionReason ?? "").trim()) return "Rejected needs a reason.";
+  return null;
+}
+===== FILE: lib\domain\decisions.ts =====
+import type { GateStatus } from "../model/gates";
+import type { Badge } from "./initiatives";
+import { formatInr } from "./money";
+
+export type Severity = "high" | "medium" | "low";
+export type TaskDraft = { ownerId: string | null; brandId: string | null; title: string };
+export type Decision = {
+  id: string;
+  severity: Severity;
+  title: string;
+  evidence: string;
+  action: string;
+  tasksToCreate: TaskDraft[];
+};
+
+export type DecisionSnapshot = {
+  initiatives: { code: string; name: string; badge: Badge; reason: string }[];
+  coordinators: {
+    id: string;
+    name: string;
+    activeCount: number;
+    idleBdays: number;
+    outreachedThisWeek: number;
+    weeklyTarget: number;
+    bdaysElapsed: number;
+    bdaysInWeek: number;
+    ghosting: number;
+    engagedPool: number;
+  }[];
+  staleProspects: { brandId: string; company: string; ownerId: string; ownerName: string; amountInr: number; idleBdays: number; thresholdBdays: number }[];
+  overduePayments: { dealId: string; company: string; ownerId: string | null; amountInr: number; dueDate: string }[];
+  ownershipConflicts: { company: string; ownerIds: string[]; ownerNames: string[] }[];
+  gates: GateStatus[];
+};
+
+const RANK: Record<Severity, number> = { high: 0, medium: 1, low: 2 };
+
+export function buildDecisions(s: DecisionSnapshot): Decision[] {
+  const out: Decision[] = [];
+
+  for (const i of s.initiatives) {
+    if (i.badge !== "STOP" && i.badge !== "CHANGE" && i.badge !== "SCALE" && i.badge !== "BEHIND") continue;
+    const verb = { STOP: "Stop", CHANGE: "Change", SCALE: "Scale", BEHIND: "Catch up on" }[i.badge];
+    out.push({
+      id: `initiative-${i.code}`,
+      severity: i.badge === "STOP" || i.badge === "BEHIND" ? "high" : "medium",
+      title: `${verb} ${i.name} (${i.code})`,
+      evidence: i.reason,
+      action: i.badge === "SCALE" ? "Double the effort on this lane." : i.badge === "CHANGE" ? "Change the hook or the matching before spending more time." : i.badge === "STOP" ? "Stop this lane and move the hours to the best performing lane." : "Add a closer and review blockers at the next stand-up.",
+      tasksToCreate: [],
+    });
+  }
+
+  for (const c of s.coordinators) {
+    if (c.activeCount > 0 && c.idleBdays >= 3) {
+      out.push({
+        id: `idle-${c.id}`, severity: "high", title: `${c.name} has had no activity for ${c.idleBdays} business days`,
+        evidence: `${c.activeCount} companies in active statuses, last activity ${c.idleBdays} business days ago.`,
+        action: "Check in today and agree what moves this week.",
+        tasksToCreate: [{ ownerId: c.id, brandId: null, title: "Update your active companies and log today's activity" }],
+      });
+    }
+    const expected = c.bdaysInWeek > 0 ? (c.weeklyTarget * c.bdaysElapsed) / c.bdaysInWeek : 0;
+    if (c.weeklyTarget > 0 && c.bdaysElapsed > 0 && c.outreachedThisWeek < 0.5 * expected) {
+      out.push({
+        id: `pace-${c.id}`, severity: "medium", title: `${c.name} is below pace this week`,
+        evidence: `${c.outreachedThisWeek} outreached against ${expected.toFixed(1)} expected by now (target ${c.weeklyTarget}).`,
+        action: "Agree a catch-up plan and clear the queue first.",
+        tasksToCreate: [{ ownerId: c.id, brandId: null, title: `Reach your weekly target of ${c.weeklyTarget} outreaches` }],
+      });
+    }
+    if (c.engagedPool > 0 && c.ghosting / c.engagedPool > 0.25) {
+      out.push({
+        id: `ghost-${c.id}`, severity: "medium", title: `High ghosting share for ${c.name}`,
+        evidence: `${c.ghosting} of ${c.engagedPool} engaged companies are ghosting (${Math.round((100 * c.ghosting) / c.engagedPool)}%).`,
+        action: "Switch channel for these contacts: call instead of mail, or reach another person at the company.",
+        tasksToCreate: [{ ownerId: c.id, brandId: null, title: "Try a different channel on your ghosting companies" }],
+      });
+    }
+  }
+
+  const stale = s.staleProspects.filter((p) => p.idleBdays > p.thresholdBdays);
+  if (stale.length > 0) {
+    const total = stale.reduce((t, p) => t + p.amountInr, 0);
+    out.push({
+      id: "stale-prospects", severity: "high", title: `${stale.length} prospective companies are past their threshold`,
+      evidence: `${formatInr(total)} at risk: ${stale.slice(0, 5).map((p) => `${p.company} (${formatInr(p.amountInr)}, idle ${p.idleBdays} business days)`).join("; ")}.`,
+      action: "Nudge each one today, and the head calls the largest directly.",
+      tasksToCreate: stale.map((p) => ({ ownerId: p.ownerId, brandId: p.brandId, title: `Nudge ${p.company}: idle ${p.idleBdays} business days` })),
+    });
+  }
+
+  if (s.overduePayments.length > 0) {
+    const total = s.overduePayments.reduce((t, p) => t + p.amountInr, 0);
+    out.push({
+      id: "overdue-payments", severity: "high", title: `${s.overduePayments.length} payments are overdue`,
+      evidence: `${formatInr(total)} overdue: ${s.overduePayments.map((p) => `${p.company} (due ${p.dueDate})`).join("; ")}.`,
+      action: "Send a payment reminder with the invoice today.",
+      tasksToCreate: s.overduePayments.map((p) => ({ ownerId: p.ownerId, brandId: null, title: `Chase payment from ${p.company} (${formatInr(p.amountInr)})` })),
+    });
+  }
+
+  for (const k of s.ownershipConflicts) {
+    out.push({
+      id: `conflict-${k.company.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, severity: "low", title: `Two owners for ${k.company}`,
+      evidence: `${k.ownerNames.join(" and ")} both hold this company.`,
+      action: "Pick one owner and tell the other to drop it.",
+      tasksToCreate: k.ownerIds.map((id) => ({ ownerId: id, brandId: null, title: `Confirm who owns ${k.company}` })),
+    });
+  }
+
+  const missed = s.gates.find((g) => g.status === "BEHIND BASE");
+  if (missed) {
+    out.push({
+      id: "replan-gates", severity: "high", title: "Re-plan: move hours to bet-1 and bet-3",
+      evidence: `Signed ${formatInr(missed.actualInr)} at the ${missed.gateOn} gate, base line is ${formatInr(missed.baseInr)}.`,
+      action: "Move hours from the colder lanes to the deal desk and warm renewals.",
+      tasksToCreate: [],
+    });
+  }
+
+  return out.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
+}
+===== FILE: lib\domain\initiatives.ts =====
+import { dateNum, evalRule, ruleMetricNames, type Metrics, type RuleJson } from "./rules-engine";
+
+export const INITIATIVES = ["bet-1", "bet-2", "bet-3", "bet-4", "bet-5"] as const;
+export type InitiativeId = (typeof INITIATIVES)[number];
+
+export type Badge = "SCALE" | "CHANGE" | "STOP" | "BEHIND" | "HOLD" | "TOO EARLY";
+export type InitiativeRules = { scale: RuleJson | null; change: RuleJson | null; stop: RuleJson | null };
+export type BadgeResult = { badge: Badge; reason: string };
+
+export const BET1_SCALE_BY = "2026-12-11";
+
+function show(names: string[], metrics: Metrics, counts: Record<string, string>): string {
+  const parts = names
+    .filter((n) => n !== "today")
+    .map((n) => counts[n] ?? (metrics[n] === undefined ? `${n} unknown` : `${n} ${Number(metrics[n].toFixed(3))}`));
+  return parts.join(", ");
+}
+
+function minOutreach(rules: InitiativeRules): number | null {
+  const vals: number[] = [];
+  for (const r of [rules.scale, rules.change, rules.stop]) {
+    for (const c of r?.all ?? []) if (c.m === "outreached" && (c.op === ">=" || c.op === ">")) vals.push(c.v);
+  }
+  return vals.length ? Math.min(...vals) : null;
+}
+
+export function evaluateInitiative(
+  code: string,
+  rules: InitiativeRules,
+  metrics: Metrics,
+  counts: Record<string, string> = {},
+): BadgeResult {
+  const stop = evalRule(rules.stop, metrics);
+  if (stop.met) return { badge: "STOP", reason: `Stop rule met: ${show(ruleMetricNames(rules.stop), metrics, counts) || "date rule reached"}.` };
+  const change = evalRule(rules.change, metrics);
+  if (change.met) return { badge: "CHANGE", reason: `Change rule met: ${show(ruleMetricNames(rules.change), metrics, counts)}.` };
+  const scale = evalRule(rules.scale, metrics);
+  if (scale.met) return { badge: "SCALE", reason: `Scale rule met: ${show(ruleMetricNames(rules.scale), metrics, counts)}.` };
+
+  const today = metrics.today ?? 0;
+  if (code === "bet-1" && today > dateNum(BET1_SCALE_BY) && (metrics.negotiating_count ?? 0) < 5) {
+    return { badge: "BEHIND", reason: `Behind: ${metrics.negotiating_count ?? 0} negotiating, 5 needed by ${BET1_SCALE_BY}.` };
+  }
+  const need = minOutreach(rules);
+  const out = metrics.outreached;
+  if (need !== null && out !== undefined && out < need) {
+    return { badge: "TOO EARLY", reason: `Too early: ${out} outreached, rules need ${need}.` };
+  }
+  const unknown = [stop, change, scale].flatMap((r) => r.clauses.filter((c) => c.met === null).map((c) => c.clause.m));
+  const tail = unknown.length ? ` Insufficient data for: ${[...new Set(unknown)].join(", ")}.` : "";
+  const all = [...new Set([...ruleMetricNames(rules.scale), ...ruleMetricNames(rules.change), ...ruleMetricNames(rules.stop)])];
+  return { badge: "HOLD", reason: `No rule met: ${show(all, metrics, counts) || "no data yet"}.${tail}` };
+}
+===== FILE: lib\domain\money.ts =====
+const RUPEE = "\u20B9";
+
+function groupIndian(amount: number): string {
+  const digits = Math.abs(Math.round(amount)).toString();
+  if (digits.length <= 3) return digits;
+  const last3 = digits.slice(-3);
+  const rest = digits.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ",");
+  return `${rest},${last3}`;
+}
+
+export function formatInr(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined || Number.isNaN(amount)) return "-";
+  const sign = Math.round(amount) < 0 ? "-" : "";
+  return `${sign}${RUPEE}${groupIndian(amount)}`;
+}
+
+export function formatLakh(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined || Number.isNaN(amount)) return "-";
+  const sign = amount < 0 ? "-" : "";
+  return `${sign}${RUPEE}${(Math.abs(amount) / 100_000).toFixed(1)}L`;
+}
+
+export function parseInr(input: string): number | null {
+  const cleaned = input.replace(/[\u20B9,\s]/g, "").toLowerCase();
+  if (!cleaned) return null;
+  const lakh = cleaned.endsWith("l");
+  const value = Number(lakh ? cleaned.slice(0, -1) : cleaned);
+  if (!Number.isFinite(value)) return null;
+  return Math.round(lakh ? value * 100_000 : value);
+}
+===== FILE: lib\domain\rules-engine.ts =====
+export type RuleOp = ">=" | "<=" | ">" | "<" | "=";
+export type RuleClause = { m: string; op: RuleOp; v: number };
+export type RuleJson = { all: RuleClause[] };
+export type Metrics = Record<string, number | undefined>;
+
+export const RULE_METRICS = [
+  "outreached",
+  "response_rate",
+  "proposal_rate",
+  "prospective_or_better",
+  "signed_deals",
+  "negotiating_count",
+  "top5_max_idle_bdays",
+  "deals_idle_gt10_after_3_nudges",
+  "inkind_share_new",
+  "personalised_vs_template_ratio",
+  "today",
+] as const;
+
+const OPS: RuleOp[] = [">=", "<=", ">", "<", "="];
+
+export function isRuleJson(value: unknown): value is RuleJson {
+  if (!value || typeof value !== "object") return false;
+  const all = (value as { all?: unknown }).all;
+  if (!Array.isArray(all)) return false;
+  return all.every(
+    (clause) =>
+      clause &&
+      typeof clause === "object" &&
+      typeof (clause as RuleClause).m === "string" &&
+      typeof (clause as RuleClause).op === "string" &&
+      typeof (clause as RuleClause).v === "number",
+  );
+}
+
+export function validateRuleJson(value: unknown): string[] {
+  if (value === null) return [];
+  if (!isRuleJson(value)) return ["Rule must look like {\"all\": [{\"m\": metric, \"op\": op, \"v\": number}]}"];
+  const errors: string[] = [];
+  if (value.all.length === 0) errors.push("A rule needs at least one clause");
+  value.all.forEach((c, i) => {
+    if (!(RULE_METRICS as readonly string[]).includes(c.m)) errors.push(`Clause ${i + 1}: unknown metric "${c.m}"`);
+    if (!OPS.includes(c.op)) errors.push(`Clause ${i + 1}: unknown operator "${c.op}"`);
+    if (!Number.isFinite(c.v)) errors.push(`Clause ${i + 1}: value must be a finite number`);
+  });
+  return errors;
+}
+
+export function compare(op: RuleOp, a: number, b: number): boolean {
+  switch (op) {
+    case ">=": return a >= b;
+    case "<=": return a <= b;
+    case ">": return a > b;
+    case "<": return a < b;
+    default: return Math.abs(a - b) < 1e-9;
+  }
+}
+
+export type ClauseResult = { clause: RuleClause; value: number | undefined; met: boolean | null };
+export type RuleResult = { met: boolean | null; clauses: ClauseResult[] };
+
+export function evalRule(rule: RuleJson | null | undefined, metrics: Metrics): RuleResult {
+  if (!rule) return { met: false, clauses: [] };
+  const clauses = rule.all.map((clause): ClauseResult => {
+    const value = metrics[clause.m];
+    const ok = value === undefined || Number.isNaN(value) ? null : compare(clause.op, value, clause.v);
+    return { clause, value: ok === null ? undefined : value, met: ok };
+  });
+  if (clauses.some((c) => c.met === false)) return { met: false, clauses };
+  if (clauses.some((c) => c.met === null)) return { met: null, clauses };
+  return { met: true, clauses };
+}
+
+export function ruleMetricNames(rule: RuleJson | null | undefined): string[] {
+  return rule ? [...new Set(rule.all.map((c) => c.m))] : [];
+}
+
+export function dateNum(iso: string): number {
+  return Number(iso.replace(/-/g, ""));
+}
+
+export function clauseText(c: RuleClause): string {
+  return `${c.m} ${c.op} ${c.v}`;
+}
+===== FILE: lib\domain\status.ts =====
+export const STATUS_CODES = [
+  "to_contact",
+  "send_mail",
+  "slabs_sent",
+  "didnt_pick",
+  "contacted",
+  "ghosting",
+  "prospective",
+  "converted",
+  "rejected",
+  "left_company",
+  "wrong_number",
+] as const;
+
+export type StatusCode = (typeof STATUS_CODES)[number];
+
+export const STATUS_LABELS: Record<StatusCode, string> = {
+  to_contact: "To Contact",
+  send_mail: "Send Mail",
+  slabs_sent: "Slabs sent",
+  didnt_pick: "Didn't Pick",
+  contacted: "Contacted",
+  ghosting: "Ghosting",
+  prospective: "Prospective",
+  converted: "Converted",
+  rejected: "Rejected",
+  left_company: "Left the Company",
+  wrong_number: "Wrong number",
+};
+
+export const RESPONDED_STATUSES: StatusCode[] = [
+  "contacted",
+  "prospective",
+  "converted",
+  "rejected",
+];
+
+===== FILE: lib\model\assumptions.ts =====
+export type SegmentRates = { response: number; proposal_rate: number; sign_rate: number };
+
+export type ModelAssumptions = {
+  close_rate: { base: number; stretch: number };
+  warm: { base: SegmentRates; stretch: SegmentRates };
+  other: { base: SegmentRates; stretch: SegmentRates };
+  avg_new_deal_inr: number;
+  inkind_new: { base: number; stretch: number };
+  inkind_policy_scope: "all" | "new_only";
+  prefest_share: number;
+  stretch_warm_leads: number;
+  stretch_other_leads: number;
+  plan_start: string;
+  plan_end: string;
+  bundle_discount_start: string;
+  bundle_discount_stop: string;
+  prefest_due_date: string;
+  postfest_due_date: string;
+  kpi_window_start: string | null;
+  use_observed: boolean;
+};
+
+export const DEFAULT_ASSUMPTIONS: ModelAssumptions = {
+  close_rate: { base: 0.25, stretch: 0.4 },
+  warm: {
+    base: { response: 0.5, proposal_rate: 0.4, sign_rate: 0.5 },
+    stretch: { response: 0.6, proposal_rate: 0.5, sign_rate: 0.5 },
+  },
+  other: {
+    base: { response: 0.25, proposal_rate: 0.04, sign_rate: 0.5 },
+    stretch: { response: 0.25, proposal_rate: 0.08, sign_rate: 0.5 },
+  },
+  avg_new_deal_inr: 125000,
+  inkind_new: { base: 0.1, stretch: 0.05 },
+  inkind_policy_scope: "all",
+  prefest_share: 0.75,
+  stretch_warm_leads: 85,
+  stretch_other_leads: 42,
+  plan_start: "2026-11-30",
+  plan_end: "2027-01-05",
+  bundle_discount_start: "2026-12-14",
+  bundle_discount_stop: "2027-01-04",
+  prefest_due_date: "2027-01-05",
+  postfest_due_date: "2027-02-09",
+  kpi_window_start: null,
+  use_observed: false,
+};
+
+function isObj(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function merge<T>(defaults: T, raw: unknown): T {
+  if (isObj(defaults)) {
+    const src = isObj(raw) ? raw : {};
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(defaults)) out[key] = merge(defaults[key], src[key]);
+    return out as T;
+  }
+  if (raw === undefined) return defaults;
+  if (defaults === null) return (typeof raw === "string" || raw === null ? raw : defaults) as T;
+  if (typeof defaults === "number") {
+    return (typeof raw === "number" && Number.isFinite(raw) ? raw : defaults) as T;
+  }
+  return (typeof raw === typeof defaults ? raw : defaults) as T;
+}
+
+export function resolveAssumptions(raw: unknown): ModelAssumptions {
+  const merged = merge(DEFAULT_ASSUMPTIONS, raw);
+  if (merged.inkind_policy_scope !== "all" && merged.inkind_policy_scope !== "new_only") {
+    merged.inkind_policy_scope = "all";
+  }
+  return merged;
+}
+===== FILE: lib\model\attribution.ts =====
+import { DEFAULT_SETTINGS, floorCash, project, scenarioInput, segmentDeals, type ModelSettings, type PlanState } from "./projection";
+
+export type AttributionRow = { bet: string; label: string; cashOverFloor: number };
+
+export type Attribution = {
+  rows: AttributionRow[];
+  floor: number;
+  stretchCash: number;
+  sumOverFloor: number;
+  reconciles: boolean;
+};
+
+export function emptyAttribution(): AttributionRow[] {
+  return [];
+}
+
+export function attributeStretch(state: PlanState, settings: ModelSettings = DEFAULT_SETTINGS): Attribution {
+  const input = scenarioInput(state, "stretch", settings);
+  const res = project(input);
+  const obs = state.observedInkindShare;
+  const p = settings.prefestShare;
+  const st = settings.stretch;
+  const avg = settings.avgNewDeal;
+  const keep = 1 - obs;
+  const perLead = (r: { response: number; proposalRate: number; signRate: number }) => r.response * r.proposalRate * r.signRate;
+
+  const bet1 = state.openProspectInr * st.closeRate * keep * p;
+  const inkindBase = settings.inkindScope === "all" ? res.signed : res.signed - state.signedToDate;
+  const bet2 = inkindBase * (obs - st.inkindShare) * p;
+  const bet3Leads = Math.max(0, settings.stretchWarmLeads - settings.artistLeads);
+  const bet3 = bet3Leads * perLead(st.warm) * avg * keep * p;
+  const bet4 = settings.artistLeads * perLead(st.warm) * avg * keep * p;
+  const bet5 = segmentDeals({ leads: settings.stretchOtherLeads, ...st.other }) * avg * keep * p;
+
+  const rows: AttributionRow[] = [
+    { bet: "bet-1", label: "Deal desk", cashOverFloor: Math.round(bet1) },
+    { bet: "bet-2", label: "Cash-first terms", cashOverFloor: Math.round(bet2) },
+    { bet: "bet-3", label: "Warm renewals", cashOverFloor: Math.round(bet3) },
+    { bet: "bet-4", label: "Lineup-triggered pitch", cashOverFloor: Math.round(bet4) },
+    { bet: "bet-5", label: "Capped cold test", cashOverFloor: Math.round(bet5) },
+  ];
+  const sum = rows.reduce((t, r) => t + r.cashOverFloor, 0);
+  const floor = floorCash(input);
+  return { rows, floor, stretchCash: res.cashBeforeFest, sumOverFloor: sum, reconciles: Math.abs(floor + sum - res.cashBeforeFest) <= 1000 };
+}
+===== FILE: lib\model\derive.ts =====
+import { WARM_CHANNELS, channelToInitiative, type ChannelCode } from "../domain/channels";
+import { businessDaysBetween, toIstDate, type Holiday } from "../domain/bizdays";
+import type { Metrics } from "../domain/rules-engine";
+import type { ModelSettings, PlanState } from "./projection";
+
+export const PLAN_START = "2026-11-30";
+export const PLAN_END = "2027-01-05";
+export const BASE_WARM_NEED = 25;
+export const QUEUE_STATUSES = ["to_contact", "send_mail"];
+export const ACTIVE_STATUSES = ["slabs_sent", "didnt_pick", "contacted", "prospective"];
+export const ENGAGED_STATUSES = ["contacted", "ghosting", "prospective"];
+
+export type BrandRow = {
+  id: string;
+  name: string;
+  owner_id: string | null;
+  crm_status: string | null;
+  source_channel: string | null;
+  approx_amount_inr: number;
+  first_outreach_at: string | null;
+  last_touch_at: string | null;
+  next_follow_up: string | null;
+  initiative_id: string | null;
+};
+
+export type SignedDeal = { dealId: string; brandId: string; amountInr: number; cashInr: number; inKindInr: number; confirmedOn: string };
+
+export const isWarm = (channel: string | null): boolean => !!channel && WARM_CHANNELS.has(channel as ChannelCode);
+
+export function buildPlanState(brands: BrandRow[], signed: SignedDeal[]): PlanState {
+  const prospects = brands.filter((b) => b.crm_status === "prospective");
+  const queue = brands.filter((b) => b.crm_status !== null && QUEUE_STATUSES.includes(b.crm_status));
+  const total = signed.reduce((t, d) => t + d.amountInr, 0);
+  const inKind = signed.reduce((t, d) => t + d.inKindInr, 0);
+  return {
+    signedToDate: total,
+    signedDealsToDate: signed.length,
+    openProspectInr: prospects.reduce((t, b) => t + b.approx_amount_inr, 0),
+    openProspectCount: prospects.length,
+    queueWarm: queue.filter((b) => isWarm(b.source_channel)).length,
+    queueOther: queue.filter((b) => !isWarm(b.source_channel)).length,
+    observedInkindShare: total > 0 ? inKind / total : 0,
+  };
+}
+
+export type LeadSupplyRow = { code: string; label: string; pool: number; need: number; gap: number };
+export type LeadSupply = { warmPool: number; baseNeed: number; stretchNeed: number; gapToBase: number; gapToStretch: number; perBet: LeadSupplyRow[] };
+
+/** Warm pool = warm companies queued now plus warm companies first outreached on or after the plan start. */
+export function leadSupply(brands: BrandRow[], settings: ModelSettings, planStart: string = PLAN_START): LeadSupply {
+  const counts = (b: BrandRow): boolean =>
+    isWarm(b.source_channel) &&
+    ((b.crm_status !== null && QUEUE_STATUSES.includes(b.crm_status)) || (!!b.first_outreach_at && toIstDate(b.first_outreach_at) >= planStart));
+  const pool = brands.filter(counts);
+  const inBet = (code: string): number => pool.filter((b) => channelToInitiative(b.source_channel as ChannelCode) === code).length;
+  const bet3Need = Math.max(0, settings.stretchWarmLeads - settings.artistLeads);
+  const row = (code: string, label: string, need: number): LeadSupplyRow => ({ code, label, pool: inBet(code), need, gap: Math.max(0, need - inBet(code)) });
+  return {
+    warmPool: pool.length,
+    baseNeed: BASE_WARM_NEED,
+    stretchNeed: settings.stretchWarmLeads,
+    gapToBase: Math.max(0, BASE_WARM_NEED - pool.length),
+    gapToStretch: Math.max(0, settings.stretchWarmLeads - pool.length),
+    perBet: [row("bet-3", "Warm renewals", bet3Need), row("bet-4", "Lineup-triggered pitch", settings.artistLeads)],
+  };
+}
+
+export type FunnelStage = { key: string; label: string; count: number; rateFromPrev: number | null };
+export type Kpis = {
+  companies: number;
+  outreached: number;
+  responded: number;
+  prospectiveOrBetter: number;
+  converted: number;
+  funnel: FunnelStage[];
+  bottleneck: string | null;
+};
+
+export type WarmthRow = { companies: number; outreached: number; responded: number; prospective_or_better: number; converted: number };
+
+export function buildKpis(rows: WarmthRow[]): Kpis {
+  const s = (k: keyof WarmthRow): number => rows.reduce((t, r) => t + Number(r[k] ?? 0), 0);
+  const raw = [
+    { key: "outreached", label: "Outreached", count: s("outreached") },
+    { key: "responded", label: "Responded", count: s("responded") },
+    { key: "prospective_or_better", label: "Prospective or better", count: s("prospective_or_better") },
+    { key: "converted", label: "Converted", count: s("converted") },
+  ];
+  const funnel: FunnelStage[] = raw.map((st, i) => {
+    const prev = i === 0 ? null : raw[i - 1]?.count ?? 0;
+    return { ...st, rateFromPrev: prev === null ? null : prev > 0 ? st.count / prev : null };
+  });
+  const rated = funnel.filter((f) => f.rateFromPrev !== null);
+  const worst = rated.reduce<FunnelStage | null>((w, f) => (w === null || (f.rateFromPrev ?? 1) < (w.rateFromPrev ?? 1) ? f : w), null);
+  return {
+    companies: s("companies"),
+    outreached: raw[0]?.count ?? 0,
+    responded: raw[1]?.count ?? 0,
+    prospectiveOrBetter: raw[2]?.count ?? 0,
+    converted: raw[3]?.count ?? 0,
+    funnel,
+    bottleneck: worst?.key ?? null,
+  };
+}
+
+// ---- initiative metrics ----
+
+export type LaneRow = { outreached: number; responded: number; prospective_or_better: number; converted: number };
+export type MetricSet = { metrics: Metrics; counts: Record<string, string> };
+
+export function laneMetrics(row: LaneRow | undefined, today: number): MetricSet {
+  const o = row?.outreached ?? 0;
+  const r = row?.responded ?? 0;
+  const p = row?.prospective_or_better ?? 0;
+  const c = row?.converted ?? 0;
+  return {
+    metrics: {
+      outreached: o,
+      response_rate: o > 0 ? r / o : undefined,
+      proposal_rate: r > 0 ? p / r : undefined,
+      prospective_or_better: p,
+      signed_deals: c,
+      today,
+    },
+    counts: {
+      outreached: `${o} outreached`,
+      response_rate: `${r} of ${o} responded`,
+      proposal_rate: `${p} of ${r} reached proposal`,
+      prospective_or_better: `${p} prospective or better`,
+      signed_deals: `${c} signed`,
+    },
+  };
+}
+
+export type DeskRow = { company: string; stage: string; proposed_inr: number; idle_bdays: number; nudges: number };
+
+export function dealDeskMetrics(rows: DeskRow[], today: number): MetricSet {
+  const top5 = [...rows].sort((a, b) => b.proposed_inr - a.proposed_inr).slice(0, 5);
+  const topIdle = top5.reduce((m, r) => Math.max(m, r.idle_bdays), 0);
+  const negotiating = rows.filter((r) => r.stage === "negotiating").length;
+  const stuck = rows.filter((r) => r.idle_bdays > 10 && r.nudges >= 3).length;
+  return {
+    metrics: { negotiating_count: negotiating, top5_max_idle_bdays: rows.length ? topIdle : undefined, deals_idle_gt10_after_3_nudges: stuck, today },
+    counts: {
+      negotiating_count: `${negotiating} negotiating`,
+      top5_max_idle_bdays: `top-5 prospects idle up to ${topIdle} business days`,
+      deals_idle_gt10_after_3_nudges: `${stuck} deals idle over 10 business days after 3 nudges`,
+    },
+  };
+}
+
+export function cashTermsMetrics(signed: SignedDeal[], planStart: string, today: number): MetricSet {
+  const fresh = signed.filter((d) => d.confirmedOn >= planStart);
+  const total = fresh.reduce((t, d) => t + d.amountInr, 0);
+  const inKind = fresh.reduce((t, d) => t + d.inKindInr, 0);
+  const share = total > 0 ? inKind / total : undefined;
+  return {
+    metrics: { inkind_share_new: share, today },
+    counts: { inkind_share_new: share === undefined ? "no new signed deals yet" : `${Math.round(share * 100)}% in-kind on ${fresh.length} new signed deals` },
+  };
+}
+
+export type ArmStats = { n: number; reached: number; rate: number | null };
+export type Experiment = { personalised: ArmStats; template: ArmStats; ratio: number | undefined; directionalOnly: boolean };
+
+export function experimentArms(
+  brandIds: Set<string>,
+  drafts: { brand_id: string; personalised: boolean; status: string }[],
+  events: { brand_id: string; to_status: string }[],
+): Experiment {
+  const arm = new Map<string, boolean>();
+  for (const d of drafts) if (d.status === "sent" && brandIds.has(d.brand_id) && !arm.has(d.brand_id)) arm.set(d.brand_id, d.personalised);
+  const reached = new Set(events.filter((e) => e.to_status === "prospective" || e.to_status === "converted").map((e) => e.brand_id));
+  const stats = (flag: boolean): ArmStats => {
+    const ids = [...arm.entries()].filter(([, p]) => p === flag).map(([id]) => id);
+    const hit = ids.filter((id) => reached.has(id)).length;
+    return { n: ids.length, reached: hit, rate: ids.length ? hit / ids.length : null };
+  };
+  const personalised = stats(true);
+  const template = stats(false);
+  const ratio = personalised.rate !== null && template.rate !== null && template.rate > 0 ? personalised.rate / template.rate : undefined;
+  return { personalised, template, ratio, directionalOnly: personalised.n < 100 || template.n < 100 };
+}
+
+// ---- decision inputs ----
+
+export const normName = (name: string): string =>
+  name.toLowerCase().replace(/\(demo\)/g, "").replace(/\b(pvt|ltd|limited|india|group)\b\.?/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+
+export function ownershipConflicts(brands: BrandRow[], nameOf: Map<string, string>): { company: string; ownerIds: string[]; ownerNames: string[] }[] {
+  const groups = new Map<string, { company: string; owners: Set<string> }>();
+  for (const b of brands) {
+    if (!b.owner_id) continue;
+    const key = normName(b.name);
+    const g = groups.get(key) ?? { company: b.name, owners: new Set<string>() };
+    g.owners.add(b.owner_id);
+    groups.set(key, g);
+  }
+  return [...groups.values()]
+    .filter((g) => g.owners.size >= 2)
+    .map((g) => ({ company: g.company, ownerIds: [...g.owners], ownerNames: [...g.owners].map((id) => nameOf.get(id) ?? id) }));
+}
+
+export function staleProspects(
+  brands: BrandRow[],
+  threshold: number,
+  today: string,
+  holidays: Holiday[],
+  nameOf: Map<string, string>,
+): { brandId: string; company: string; ownerId: string; ownerName: string; amountInr: number; idleBdays: number; thresholdBdays: number }[] {
+  const out = [];
+  for (const b of brands) {
+    if (b.crm_status !== "prospective" || !b.owner_id) continue;
+    if (b.next_follow_up && b.next_follow_up > today) continue;
+    const idle = businessDaysBetween(toIstDate(b.last_touch_at ?? today), today, holidays);
+    if (idle > threshold) {
+      out.push({ brandId: b.id, company: b.name, ownerId: b.owner_id, ownerName: nameOf.get(b.owner_id) ?? b.owner_id, amountInr: b.approx_amount_inr, idleBdays: idle, thresholdBdays: threshold });
+    }
+  }
+  return out.sort((a, b) => b.amountInr - a.amountInr);
+}
+
+export type CoordStat = {
+  id: string;
+  name: string;
+  activeCount: number;
+  idleBdays: number;
+  outreachedThisWeek: number;
+  weeklyTarget: number;
+  bdaysElapsed: number;
+  bdaysInWeek: number;
+  ghosting: number;
+  engagedPool: number;
+};
+
+export function coordinatorStat(
+  member: { id: string; name: string },
+  brands: BrandRow[],
+  week: { outreached: number; target: number },
+  today: string,
+  holidays: Holiday[],
+  bdays: { inWeek: number; left: number },
+): CoordStat {
+  const mine = brands.filter((b) => b.owner_id === member.id);
+  const active = mine.filter((b) => b.crm_status !== null && ACTIVE_STATUSES.includes(b.crm_status));
+  const lastTouch = mine.reduce<string | null>((m, b) => (b.last_touch_at && (m === null || b.last_touch_at > m) ? b.last_touch_at : m), null);
+  const engaged = mine.filter((b) => b.crm_status !== null && ENGAGED_STATUSES.includes(b.crm_status));
+  const elapsed = bdays.left === 0 ? bdays.inWeek : Math.min(bdays.inWeek, bdays.inWeek - bdays.left + 1);
+  return {
+    id: member.id,
+    name: member.name,
+    activeCount: active.length,
+    idleBdays: lastTouch ? businessDaysBetween(toIstDate(lastTouch), today, holidays) : 0,
+    outreachedThisWeek: week.outreached,
+    weeklyTarget: week.target,
+    bdaysElapsed: elapsed,
+    bdaysInWeek: bdays.inWeek,
+    ghosting: mine.filter((b) => b.crm_status === "ghosting").length,
+    engagedPool: engaged.length,
+  };
+}
+===== FILE: lib\model\gates.ts =====
+export type Gate = { gateOn: string; baseInr: number; stretchInr: number };
+export type SignedDeal = { confirmedOn: string; amountInr: number };
+export type GateStatusLabel = "ON TRACK" | "BEHIND BASE" | "UPCOMING";
+export type GateStatus = {
+  gateOn: string;
+  baseInr: number;
+  stretchInr: number;
+  actualInr: number;
+  status: GateStatusLabel;
+  beatsStretch: boolean;
+  gapToBase: number;
+};
+
+export const DEFAULT_GATES: Gate[] = [
+  { gateOn: "2026-12-07", baseInr: 1_320_000, stretchInr: 1_680_000 },
+  { gateOn: "2026-12-14", baseInr: 1_600_000, stretchInr: 2_390_000 },
+  { gateOn: "2026-12-21", baseInr: 1_880_000, stretchInr: 3_110_000 },
+];
+
+export function signedAsOf(deals: SignedDeal[], date: string): number {
+  return deals.filter((d) => d.confirmedOn <= date).reduce((t, d) => t + d.amountInr, 0);
+}
+
+export function gateStatuses(gates: Gate[], deals: SignedDeal[], today: string): GateStatus[] {
+  return [...gates]
+    .sort((a, b) => a.gateOn.localeCompare(b.gateOn))
+    .map((g) => {
+      const asOf = g.gateOn <= today ? g.gateOn : today;
+      const actual = signedAsOf(deals, asOf);
+      const status: GateStatusLabel = g.gateOn > today ? "UPCOMING" : actual >= g.baseInr ? "ON TRACK" : "BEHIND BASE";
+      return { ...g, actualInr: actual, status, beatsStretch: g.gateOn <= today && actual >= g.stretchInr, gapToBase: g.baseInr - actual };
+    });
+}
+
+export function closingOnlyPhase(gates: Gate[], today: string): boolean {
+  const last = [...gates].sort((a, b) => a.gateOn.localeCompare(b.gateOn)).at(-1);
+  return !!last && today > last.gateOn;
+}
+
+export function missedBaseGate(statuses: GateStatus[]): GateStatus | null {
+  return statuses.find((s) => s.status === "BEHIND BASE") ?? null;
+}
+
+export type PacePoint = { date: string; base: number; stretch: number };
+
+export function paceLine(gates: Gate[], today: string, actualToday: number, endDate: string, endBase: number, endStretch: number): PacePoint[] {
+  const future = [...gates].filter((g) => g.gateOn > today).sort((a, b) => a.gateOn.localeCompare(b.gateOn));
+  const pts: PacePoint[] = [{ date: today, base: actualToday, stretch: actualToday }];
+  for (const g of future) pts.push({ date: g.gateOn, base: g.baseInr, stretch: g.stretchInr });
+  if (endDate > (pts.at(-1)?.date ?? "")) pts.push({ date: endDate, base: endBase, stretch: endStretch });
+  return pts;
+}
+===== FILE: lib\model\projection.ts =====
+export type SegmentInput = { leads: number; response: number; proposalRate: number; signRate: number };
+export type InkindScope = "all" | "new_only";
+
+export type ProjectionInput = {
+  signedToDate: number;
+  openProspectInr: number;
+  closeRate: number;
+  inkindShare: number;
+  prefestShare: number;
+  avgNewDeal: number;
+  warm: SegmentInput;
+  other: SegmentInput;
+  observedInkindShare?: number;
+  inkindScope?: InkindScope;
+  signedDealsToDate?: number;
+  openProspectCount?: number;
+};
+
+export type ProjectionResult = {
+  signed: number;
+  cashBeforeFest: number;
+  floorCash: number;
+  newSigned: number;
+  openClosed: number;
+  newDeals: number;
+  openDeals: number;
+  totalDeals: number;
+};
+
+const fix = (x: number): number => Math.round(Math.round(x * 1e6) / 1e6);
+
+export const segmentDeals = (s: SegmentInput): number => s.leads * s.response * s.proposalRate * s.signRate;
+
+export function floorCash(input: Pick<ProjectionInput, "signedToDate" | "prefestShare" | "inkindShare" | "observedInkindShare">): number {
+  const obs = input.observedInkindShare ?? input.inkindShare;
+  return fix(input.signedToDate * (1 - obs) * input.prefestShare);
+}
+
+export function project(input: ProjectionInput): ProjectionResult {
+  const obs = input.observedInkindShare ?? input.inkindShare;
+  const scope = input.inkindScope ?? "all";
+  const newDeals = segmentDeals(input.warm) + segmentDeals(input.other);
+  const newSigned = newDeals * input.avgNewDeal;
+  const openClosed = input.openProspectInr * input.closeRate;
+  const signed = input.signedToDate + openClosed + newSigned;
+  const keep = 1 - input.inkindShare;
+  const cash =
+    scope === "all"
+      ? signed * keep * input.prefestShare
+      : (input.signedToDate * (1 - obs) + (openClosed + newSigned) * keep) * input.prefestShare;
+  const openDeals = (input.openProspectCount ?? 0) * input.closeRate;
+  return {
+    signed: fix(signed),
+    cashBeforeFest: fix(cash),
+    floorCash: floorCash(input),
+    newSigned: fix(newSigned),
+    openClosed: fix(openClosed),
+    newDeals: Math.round(newDeals * 1e6) / 1e6,
+    openDeals,
+    totalDeals: (input.signedDealsToDate ?? 0) + openDeals + newDeals,
+  };
+}
+
+export type ScenarioSettings = {
+  closeRate: number;
+  inkindShare: number;
+  warm: { response: number; proposalRate: number; signRate: number };
+  other: { response: number; proposalRate: number; signRate: number };
+};
+
+export type ModelSettings = {
+  avgNewDeal: number;
+  prefestShare: number;
+  inkindScope: InkindScope;
+  stretchWarmLeads: number;
+  stretchOtherLeads: number;
+  artistLeads: number;
+  base: ScenarioSettings;
+  stretch: ScenarioSettings;
+};
+
+export const DEFAULT_SETTINGS: ModelSettings = {
+  avgNewDeal: 125_000,
+  prefestShare: 0.75,
+  inkindScope: "all",
+  stretchWarmLeads: 85,
+  stretchOtherLeads: 42,
+  artistLeads: 30,
+  base: {
+    closeRate: 0.25,
+    inkindShare: 0.1,
+    warm: { response: 0.5, proposalRate: 0.4, signRate: 0.5 },
+    other: { response: 0.25, proposalRate: 0.04, signRate: 0.5 },
+  },
+  stretch: {
+    closeRate: 0.4,
+    inkindShare: 0.05,
+    warm: { response: 0.6, proposalRate: 0.5, signRate: 0.5 },
+    other: { response: 0.25, proposalRate: 0.08, signRate: 0.5 },
+  },
+};
+
+export type PlanState = {
+  signedToDate: number;
+  signedDealsToDate: number;
+  openProspectInr: number;
+  openProspectCount: number;
+  queueWarm: number;
+  queueOther: number;
+  observedInkindShare: number;
+};
+
+export type Scenario = "base" | "stretch";
+
+export function scenarioInput(state: PlanState, scenario: Scenario, settings: ModelSettings = DEFAULT_SETTINGS): ProjectionInput {
+  const sc = settings[scenario];
+  const warmLeads = scenario === "base" ? state.queueWarm : settings.stretchWarmLeads;
+  const otherLeads = scenario === "base" ? state.queueOther : settings.stretchOtherLeads;
+  return {
+    signedToDate: state.signedToDate,
+    openProspectInr: state.openProspectInr,
+    closeRate: sc.closeRate,
+    inkindShare: sc.inkindShare,
+    prefestShare: settings.prefestShare,
+    avgNewDeal: settings.avgNewDeal,
+    warm: { leads: warmLeads, ...sc.warm },
+    other: { leads: otherLeads, ...sc.other },
+    observedInkindShare: state.observedInkindShare,
+    inkindScope: settings.inkindScope,
+    signedDealsToDate: state.signedDealsToDate,
+    openProspectCount: state.openProspectCount,
+  };
+}
+
+export type PlanProjection = { floor: number; base: ProjectionResult; stretch: ProjectionResult };
+
+export function projectPlan(state: PlanState, settings: ModelSettings = DEFAULT_SETTINGS): PlanProjection {
+  return {
+    floor: floorCash({ ...scenarioInput(state, "base", settings) }),
+    base: project(scenarioInput(state, "base", settings)),
+    stretch: project(scenarioInput(state, "stretch", settings)),
+  };
+}
+
+type Patch = {
+  [K in keyof ModelSettings]?: ModelSettings[K] extends object ? Partial<{ [J in keyof ModelSettings[K]]: unknown }> : ModelSettings[K];
+};
+
+export function mergeSettings(patch: Patch = {}, from: ModelSettings = DEFAULT_SETTINGS): ModelSettings {
+  const p = patch as Record<string, unknown>;
+  const scen = (k: Scenario): ScenarioSettings => {
+    const q = (p[k] ?? {}) as Partial<ScenarioSettings>;
+    return {
+      ...from[k],
+      ...q,
+      warm: { ...from[k].warm, ...(q.warm ?? {}) },
+      other: { ...from[k].other, ...(q.other ?? {}) },
+    };
+  };
+  return { ...from, ...(patch as Partial<ModelSettings>), base: scen("base"), stretch: scen("stretch") };
+}
+===== FILE: lib\session.ts =====
+import { cookies } from "next/headers";
+
+export const ROLE_COOKIE = "dd_role";
+export const MEMBER_COOKIE = "dd_member";
+export const EVENT_COOKIE = "dd_event";
+
+export type DemoRole = "head" | "coordinator";
+
+export const DEFAULT_EVENT_ID = "saarang-2027";
+
+export async function getSession() {
+  const store = await cookies();
+  const role = (store.get(ROLE_COOKIE)?.value === "coordinator" ? "coordinator" : "head") as DemoRole;
+  const memberId = store.get(MEMBER_COOKIE)?.value ?? null;
+  const eventId = store.get(EVENT_COOKIE)?.value ?? DEFAULT_EVENT_ID;
+  return { role, memberId, eventId };
+}
+
+===== FILE: lib\types.ts =====
+import type { DemoRole } from "@/lib/session";
+import type { StatusCode } from "@/lib/domain/status";
+
+export type { Holiday } from "@/lib/domain/bizdays";
+
+export type EventInfo = {
+  id: string;
+  name: string;
+  is_seed: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  as_of: string | null;
+  weekly_target_default: number;
+  model_assumptions: Record<string, unknown>;
+};
+
+export type Ctx = {
+  eventId: string;
+  event: EventInfo;
+  role: DemoRole;
+  memberId: string | null;
+  isCloser: boolean;
+  todayIst: string;
+  isLocked: boolean;
+};
+
+export type TeamMember = {
+  id: string;
+  source_id: string | null;
+  name: string;
+  role: "member" | "manager";
+  is_closer: boolean;
+};
+
+export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
+
+export type NeedsUpdateRow = {
+  brand_id: string;
+  event_id: string;
+  company: string;
+  owner_id: string | null;
+  crm_status: StatusCode;
+  last_touch: string;
+  next_follow_up: string | null;
+  approx_amount_inr: number | null;
+  days_threshold: number;
+  idle_bdays: number;
+  reason: "idle" | "follow_up_due";
+};
+
+export type WeeklyProgressRow = {
+  event_id: string;
+  owner_id: string | null;
+  week_start: string;
+  outreached: number;
+  responded: number;
+  prospective_now: number;
+  converted_now: number;
+  rejected_now: number;
+  ghosting_now: number;
+  didnt_pick_now: number;
+};
+
+export type CoordSummaryRow = {
+  event_id: string;
+  owner_id: string | null;
+  total_outreached: number;
+  total_responded: number;
+  prospective: number;
+  converted: number;
+  rejected: number;
+  ghosting: number;
+  queued: number;
+  approx_amt_inr: number;
+  final_amt_inr: number;
+  last_active_at: string | null;
+};
+
+export type ChannelFunnelRow = {
+  event_id: string;
+  channel: string;
+  companies: number;
+  outreached: number;
+  responded: number;
+  prospective_or_better: number;
+  prospective_now: number;
+  converted: number;
+  rejected: number;
+  ghosting: number;
+  prospective_inr: number;
+  signed_inr: number;
+};
+
+export type InitiativeFunnelRow = {
+  event_id: string;
+  initiative_id: string;
+  companies: number;
+  queued: number;
+  outreached: number;
+  responded: number;
+  prospective_or_better: number;
+  converted: number;
+  signed_inr: number;
+};
+
+export type WarmthFunnelRow = {
+  event_id: string;
+  warmth: "warm" | "other";
+  companies: number;
+  queued: number;
+  outreached: number;
+  responded: number;
+  prospective_or_better: number;
+  converted: number;
+};
+
+export type DealDeskRow = {
+  deal_id: string;
+  event_id: string;
+  brand_id: string;
+  company: string;
+  owner_id: string | null;
+  stage: "prospecting" | "proposal_sent" | "negotiating";
+  proposed_inr: number;
+  next_follow_up: string | null;
+  last_touch: string;
+  idle_bdays: number;
+  nudges: number;
+};
+
+export type CashSummaryRow = {
+  event_id: string;
+  owner_id: string | null;
+  channel: string;
+  pre_fest_scheduled_inr: number;
+  pre_fest_collected_inr: number;
+  pre_fest_pending_inr: number;
+  post_fest_scheduled_inr: number;
+  post_fest_collected_inr: number;
+};
+
+export type StaleRule = { state_key: string; days_threshold: number };
+
+export type TeamGoal = {
+  scenario: "base" | "stretch";
+  signed_value_goal_inr: number | null;
+  cash_collected_goal_inr: number | null;
+  version_label: string | null;
+};
+
+export type WeeklyStrip = {
+  weekStart: string;
+  weekEnd: string;
+  target: number;
+  label: string;
+  source: "row" | "default";
+  outreached: number;
+  responded: number;
+  responseRate: number | null;
+  businessDaysLeft: number;
+  remaining: number;
+  requiredPerDay: number | null;
+};
+
+export type TeamWeekSummary = {
+  weekStart: string;
+  outreached: number;
+  responded: number;
+  target: number;
+  members: { memberId: string; name: string; target: number; outreached: number; responded: number }[];
+};
+===== FILE: package.json =====
+{
+  "name": "deal-drive",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "verify": "tsx scripts/verify.ts",
+    "seed:campusfest": "tsx scripts/seed-campusfest.ts",
+    "seed:saarang": "tsx scripts/seed-saarang.ts",
+    "test:chat": "tsx scripts/test-chat.ts",
+    "verify:saarang": "tsx scripts/verify-saarang.ts",
+    "verify:queries": "tsx scripts/verify-queries.ts",
+    "verify:crm": "tsx scripts/verify-crm.ts",
+    "verify:crm-detail": "tsx scripts/verify-crm-detail.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^3.6.1",
+    "@radix-ui/react-slot": "^1.5.0",
+    "@supabase/supabase-js": "^2.119.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
+    "date-fns-tz": "^3.2.0",
+    "dotenv": "^18.0.10",
+    "exceljs": "^4.4.0",
+    "lucide-react": "^1.81.0",
+    "next": "16.4.6",
+    "papaparse": "^5.7.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "recharts": "^3.11.1",
+    "tailwind-merge": "^3.7.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "4.3.3",
+    "@types/node": "^24.19.4",
+    "@types/papaparse": "^5.5.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.6",
+    "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.1.2"
+  }
+}
+
+===== FILE: scripts\test-chat.ts =====
+import { config } from "dotenv";
+
+config({ path: ".env.local" });
+
+console.log("test:chat is Phase 7");
+process.exit(0);
+

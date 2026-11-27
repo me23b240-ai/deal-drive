@@ -1,0 +1,676 @@
+﻿=== lib\model\derive.ts ===
+import { WARM_CHANNELS, channelToInitiative, type ChannelCode } from "../domain/channels";
+import { businessDaysBetween, toIstDate, type Holiday } from "../domain/bizdays";
+import type { Metrics } from "../domain/rules-engine";
+import type { ModelSettings, PlanState } from "./projection";
+
+export const PLAN_START = "2026-11-30";
+export const PLAN_END = "2027-01-05";
+export const BASE_WARM_NEED = 25;
+export const QUEUE_STATUSES = ["to_contact", "send_mail"];
+export const ACTIVE_STATUSES = ["slabs_sent", "didnt_pick", "contacted", "prospective"];
+export const ENGAGED_STATUSES = ["contacted", "ghosting", "prospective"];
+
+export type BrandRow = {
+  id: string;
+  name: string;
+  owner_id: string | null;
+  crm_status: string | null;
+  source_channel: string | null;
+  approx_amount_inr: number;
+  first_outreach_at: string | null;
+  last_touch_at: string | null;
+  next_follow_up: string | null;
+  initiative_id: string | null;
+};
+
+export type SignedDeal = { dealId: string; brandId: string; amountInr: number; cashInr: number; inKindInr: number; confirmedOn: string };
+
+export const isWarm = (channel: string | null): boolean => !!channel && WARM_CHANNELS.has(channel as ChannelCode);
+
+export function buildPlanState(brands: BrandRow[], signed: SignedDeal[]): PlanState {
+  const prospects = brands.filter((b) => b.crm_status === "prospective");
+  const queue = brands.filter((b) => b.crm_status !== null && QUEUE_STATUSES.includes(b.crm_status));
+  const total = signed.reduce((t, d) => t + d.amountInr, 0);
+  const inKind = signed.reduce((t, d) => t + d.inKindInr, 0);
+  return {
+    signedToDate: total,
+    signedDealsToDate: signed.length,
+    openProspectInr: prospects.reduce((t, b) => t + b.approx_amount_inr, 0),
+    openProspectCount: prospects.length,
+    queueWarm: queue.filter((b) => isWarm(b.source_channel)).length,
+    queueOther: queue.filter((b) => !isWarm(b.source_channel)).length,
+    observedInkindShare: total > 0 ? inKind / total : 0,
+  };
+}
+
+export type LeadSupplyRow = { code: string; label: string; pool: number; need: number; gap: number };
+export type LeadSupply = { warmPool: number; baseNeed: number; stretchNeed: number; gapToBase: number; gapToStretch: number; perBet: LeadSupplyRow[] };
+
+/** Warm pool = warm companies queued now plus warm companies first outreached on or after the plan start. */
+export function leadSupply(brands: BrandRow[], settings: ModelSettings, planStart: string = PLAN_START): LeadSupply {
+  const counts = (b: BrandRow): boolean =>
+    isWarm(b.source_channel) &&
+    ((b.crm_status !== null && QUEUE_STATUSES.includes(b.crm_status)) || (!!b.first_outreach_at && toIstDate(b.first_outreach_at) >= planStart));
+  const pool = brands.filter(counts);
+  const inBet = (code: string): number => pool.filter((b) => channelToInitiative(b.source_channel as ChannelCode) === code).length;
+  const bet3Need = Math.max(0, settings.stretchWarmLeads - settings.artistLeads);
+  const row = (code: string, label: string, need: number): LeadSupplyRow => ({ code, label, pool: inBet(code), need, gap: Math.max(0, need - inBet(code)) });
+  return {
+    warmPool: pool.length,
+    baseNeed: BASE_WARM_NEED,
+    stretchNeed: settings.stretchWarmLeads,
+    gapToBase: Math.max(0, BASE_WARM_NEED - pool.length),
+    gapToStretch: Math.max(0, settings.stretchWarmLeads - pool.length),
+    perBet: [row("bet-3", "Warm renewals", bet3Need), row("bet-4", "Lineup-triggered pitch", settings.artistLeads)],
+  };
+}
+
+export type FunnelStage = { key: string; label: string; count: number; rateFromPrev: number | null };
+export type Kpis = {
+  companies: number;
+  outreached: number;
+  responded: number;
+  prospectiveOrBetter: number;
+  converted: number;
+  funnel: FunnelStage[];
+  bottleneck: string | null;
+};
+
+export type WarmthRow = { companies: number; outreached: number; responded: number; prospective_or_better: number; converted: number };
+
+export function buildKpis(rows: WarmthRow[]): Kpis {
+  const s = (k: keyof WarmthRow): number => rows.reduce((t, r) => t + Number(r[k] ?? 0), 0);
+  const raw = [
+    { key: "outreached", label: "Outreached", count: s("outreached") },
+    { key: "responded", label: "Responded", count: s("responded") },
+    { key: "prospective_or_better", label: "Prospective or better", count: s("prospective_or_better") },
+    { key: "converted", label: "Converted", count: s("converted") },
+  ];
+  const funnel: FunnelStage[] = raw.map((st, i) => {
+    const prev = i === 0 ? null : raw[i - 1]?.count ?? 0;
+    return { ...st, rateFromPrev: prev === null ? null : prev > 0 ? st.count / prev : null };
+  });
+  const rated = funnel.filter((f) => f.rateFromPrev !== null);
+  const worst = rated.reduce<FunnelStage | null>((w, f) => (w === null || (f.rateFromPrev ?? 1) < (w.rateFromPrev ?? 1) ? f : w), null);
+  return {
+    companies: s("companies"),
+    outreached: raw[0]?.count ?? 0,
+    responded: raw[1]?.count ?? 0,
+    prospectiveOrBetter: raw[2]?.count ?? 0,
+    converted: raw[3]?.count ?? 0,
+    funnel,
+    bottleneck: worst?.key ?? null,
+  };
+}
+
+// ---- initiative metrics ----
+
+export type LaneRow = { outreached: number; responded: number; prospective_or_better: number; converted: number };
+export type MetricSet = { metrics: Metrics; counts: Record<string, string> };
+
+export function laneMetrics(row: LaneRow | undefined, today: number): MetricSet {
+  const o = row?.outreached ?? 0;
+  const r = row?.responded ?? 0;
+  const p = row?.prospective_or_better ?? 0;
+  const c = row?.converted ?? 0;
+  return {
+    metrics: {
+      outreached: o,
+      response_rate: o > 0 ? r / o : undefined,
+      proposal_rate: r > 0 ? p / r : undefined,
+      prospective_or_better: p,
+      signed_deals: c,
+      today,
+    },
+    counts: {
+      outreached: `${o} outreached`,
+      response_rate: `${r} of ${o} responded`,
+      proposal_rate: `${p} of ${r} reached proposal`,
+      prospective_or_better: `${p} prospective or better`,
+      signed_deals: `${c} signed`,
+    },
+  };
+}
+
+export type DeskRow = { company: string; stage: string; proposed_inr: number; idle_bdays: number; nudges: number };
+
+export function dealDeskMetrics(rows: DeskRow[], today: number): MetricSet {
+  const top5 = [...rows].sort((a, b) => b.proposed_inr - a.proposed_inr).slice(0, 5);
+  const topIdle = top5.reduce((m, r) => Math.max(m, r.idle_bdays), 0);
+  const negotiating = rows.filter((r) => r.stage === "negotiating").length;
+  const stuck = rows.filter((r) => r.idle_bdays > 10 && r.nudges >= 3).length;
+  return {
+    metrics: { negotiating_count: negotiating, top5_max_idle_bdays: rows.length ? topIdle : undefined, deals_idle_gt10_after_3_nudges: stuck, today },
+    counts: {
+      negotiating_count: `${negotiating} negotiating`,
+      top5_max_idle_bdays: `top-5 prospects idle up to ${topIdle} business days`,
+      deals_idle_gt10_after_3_nudges: `${stuck} deals idle over 10 business days after 3 nudges`,
+    },
+  };
+}
+
+export function cashTermsMetrics(signed: SignedDeal[], planStart: string, today: number): MetricSet {
+  const fresh = signed.filter((d) => d.confirmedOn >= planStart);
+  const total = fresh.reduce((t, d) => t + d.amountInr, 0);
+  const inKind = fresh.reduce((t, d) => t + d.inKindInr, 0);
+  const share = total > 0 ? inKind / total : undefined;
+  return {
+    metrics: { inkind_share_new: share, today },
+    counts: { inkind_share_new: share === undefined ? "no new signed deals yet" : `${Math.round(share * 100)}% in-kind on ${fresh.length} new signed deals` },
+  };
+}
+
+export type ArmStats = { n: number; reached: number; rate: number | null };
+export type Experiment = { personalised: ArmStats; template: ArmStats; ratio: number | undefined; directionalOnly: boolean };
+
+export function experimentArms(
+  brandIds: Set<string>,
+  drafts: { brand_id: string; personalised: boolean; status: string }[],
+  events: { brand_id: string; to_status: string }[],
+): Experiment {
+  const arm = new Map<string, boolean>();
+  for (const d of drafts) if (d.status === "sent" && brandIds.has(d.brand_id) && !arm.has(d.brand_id)) arm.set(d.brand_id, d.personalised);
+  const reached = new Set(events.filter((e) => e.to_status === "prospective" || e.to_status === "converted").map((e) => e.brand_id));
+  const stats = (flag: boolean): ArmStats => {
+    const ids = [...arm.entries()].filter(([, p]) => p === flag).map(([id]) => id);
+    const hit = ids.filter((id) => reached.has(id)).length;
+    return { n: ids.length, reached: hit, rate: ids.length ? hit / ids.length : null };
+  };
+  const personalised = stats(true);
+  const template = stats(false);
+  const ratio = personalised.rate !== null && template.rate !== null && template.rate > 0 ? personalised.rate / template.rate : undefined;
+  return { personalised, template, ratio, directionalOnly: personalised.n < 100 || template.n < 100 };
+}
+
+// ---- decision inputs ----
+
+export const normName = (name: string): string =>
+  name.toLowerCase().replace(/\(demo\)/g, "").replace(/\b(pvt|ltd|limited|india|group)\b\.?/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+
+export function ownershipConflicts(brands: BrandRow[], nameOf: Map<string, string>): { company: string; ownerIds: string[]; ownerNames: string[] }[] {
+  const groups = new Map<string, { company: string; owners: Set<string> }>();
+  for (const b of brands) {
+    if (!b.owner_id) continue;
+    const key = normName(b.name);
+    const g = groups.get(key) ?? { company: b.name, owners: new Set<string>() };
+    g.owners.add(b.owner_id);
+    groups.set(key, g);
+  }
+  return [...groups.values()]
+    .filter((g) => g.owners.size >= 2)
+    .map((g) => ({ company: g.company, ownerIds: [...g.owners], ownerNames: [...g.owners].map((id) => nameOf.get(id) ?? id) }));
+}
+
+export function staleProspects(
+  brands: BrandRow[],
+  threshold: number,
+  today: string,
+  holidays: Holiday[],
+  nameOf: Map<string, string>,
+): { brandId: string; company: string; ownerId: string; ownerName: string; amountInr: number; idleBdays: number; thresholdBdays: number }[] {
+  const out = [];
+  for (const b of brands) {
+    if (b.crm_status !== "prospective" || !b.owner_id) continue;
+    if (b.next_follow_up && b.next_follow_up > today) continue;
+    const idle = businessDaysBetween(toIstDate(b.last_touch_at ?? today), today, holidays);
+    if (idle > threshold) {
+      out.push({ brandId: b.id, company: b.name, ownerId: b.owner_id, ownerName: nameOf.get(b.owner_id) ?? b.owner_id, amountInr: b.approx_amount_inr, idleBdays: idle, thresholdBdays: threshold });
+    }
+  }
+  return out.sort((a, b) => b.amountInr - a.amountInr);
+}
+
+export type CoordStat = {
+  id: string;
+  name: string;
+  activeCount: number;
+  idleBdays: number;
+  outreachedThisWeek: number;
+  weeklyTarget: number;
+  bdaysElapsed: number;
+  bdaysInWeek: number;
+  ghosting: number;
+  engagedPool: number;
+};
+
+export function coordinatorStat(
+  member: { id: string; name: string },
+  brands: BrandRow[],
+  week: { outreached: number; target: number },
+  today: string,
+  holidays: Holiday[],
+  bdays: { inWeek: number; left: number },
+): CoordStat {
+  const mine = brands.filter((b) => b.owner_id === member.id);
+  const active = mine.filter((b) => b.crm_status !== null && ACTIVE_STATUSES.includes(b.crm_status));
+  const lastTouch = mine.reduce<string | null>((m, b) => (b.last_touch_at && (m === null || b.last_touch_at > m) ? b.last_touch_at : m), null);
+  const engaged = mine.filter((b) => b.crm_status !== null && ENGAGED_STATUSES.includes(b.crm_status));
+  const elapsed = bdays.left === 0 ? bdays.inWeek : Math.min(bdays.inWeek, bdays.inWeek - bdays.left + 1);
+  return {
+    id: member.id,
+    name: member.name,
+    activeCount: active.length,
+    idleBdays: lastTouch ? businessDaysBetween(toIstDate(lastTouch), today, holidays) : 0,
+    outreachedThisWeek: week.outreached,
+    weeklyTarget: week.target,
+    bdaysElapsed: elapsed,
+    bdaysInWeek: bdays.inWeek,
+    ghosting: mine.filter((b) => b.crm_status === "ghosting").length,
+    engagedPool: engaged.length,
+  };
+}
+=== lib\model\gates.ts ===
+export type Gate = { gateOn: string; baseInr: number; stretchInr: number };
+export type SignedDeal = { confirmedOn: string; amountInr: number };
+export type GateStatusLabel = "ON TRACK" | "BEHIND BASE" | "UPCOMING";
+export type GateStatus = {
+  gateOn: string;
+  baseInr: number;
+  stretchInr: number;
+  actualInr: number;
+  status: GateStatusLabel;
+  beatsStretch: boolean;
+  gapToBase: number;
+};
+
+export const DEFAULT_GATES: Gate[] = [
+  { gateOn: "2026-12-07", baseInr: 1_320_000, stretchInr: 1_680_000 },
+  { gateOn: "2026-12-14", baseInr: 1_600_000, stretchInr: 2_390_000 },
+  { gateOn: "2026-12-21", baseInr: 1_880_000, stretchInr: 3_110_000 },
+];
+
+export function signedAsOf(deals: SignedDeal[], date: string): number {
+  return deals.filter((d) => d.confirmedOn <= date).reduce((t, d) => t + d.amountInr, 0);
+}
+
+export function gateStatuses(gates: Gate[], deals: SignedDeal[], today: string): GateStatus[] {
+  return [...gates]
+    .sort((a, b) => a.gateOn.localeCompare(b.gateOn))
+    .map((g) => {
+      const asOf = g.gateOn <= today ? g.gateOn : today;
+      const actual = signedAsOf(deals, asOf);
+      const status: GateStatusLabel = g.gateOn > today ? "UPCOMING" : actual >= g.baseInr ? "ON TRACK" : "BEHIND BASE";
+      return { ...g, actualInr: actual, status, beatsStretch: g.gateOn <= today && actual >= g.stretchInr, gapToBase: g.baseInr - actual };
+    });
+}
+
+export function closingOnlyPhase(gates: Gate[], today: string): boolean {
+  const last = [...gates].sort((a, b) => a.gateOn.localeCompare(b.gateOn)).at(-1);
+  return !!last && today > last.gateOn;
+}
+
+export function missedBaseGate(statuses: GateStatus[]): GateStatus | null {
+  return statuses.find((s) => s.status === "BEHIND BASE") ?? null;
+}
+
+export type PacePoint = { date: string; base: number; stretch: number };
+
+export function paceLine(gates: Gate[], today: string, actualToday: number, endDate: string, endBase: number, endStretch: number): PacePoint[] {
+  const future = [...gates].filter((g) => g.gateOn > today).sort((a, b) => a.gateOn.localeCompare(b.gateOn));
+  const pts: PacePoint[] = [{ date: today, base: actualToday, stretch: actualToday }];
+  for (const g of future) pts.push({ date: g.gateOn, base: g.baseInr, stretch: g.stretchInr });
+  if (endDate > (pts.at(-1)?.date ?? "")) pts.push({ date: endDate, base: endBase, stretch: endStretch });
+  return pts;
+}
+=== lib\model\projection.ts ===
+export type SegmentInput = { leads: number; response: number; proposalRate: number; signRate: number };
+export type InkindScope = "all" | "new_only";
+
+export type ProjectionInput = {
+  signedToDate: number;
+  openProspectInr: number;
+  closeRate: number;
+  inkindShare: number;
+  prefestShare: number;
+  avgNewDeal: number;
+  warm: SegmentInput;
+  other: SegmentInput;
+  observedInkindShare?: number;
+  inkindScope?: InkindScope;
+  signedDealsToDate?: number;
+  openProspectCount?: number;
+};
+
+export type ProjectionResult = {
+  signed: number;
+  cashBeforeFest: number;
+  floorCash: number;
+  newSigned: number;
+  openClosed: number;
+  newDeals: number;
+  openDeals: number;
+  totalDeals: number;
+};
+
+const fix = (x: number): number => Math.round(Math.round(x * 1e6) / 1e6);
+
+export const segmentDeals = (s: SegmentInput): number => s.leads * s.response * s.proposalRate * s.signRate;
+
+export function floorCash(input: Pick<ProjectionInput, "signedToDate" | "prefestShare" | "inkindShare" | "observedInkindShare">): number {
+  const obs = input.observedInkindShare ?? input.inkindShare;
+  return fix(input.signedToDate * (1 - obs) * input.prefestShare);
+}
+
+export function project(input: ProjectionInput): ProjectionResult {
+  const obs = input.observedInkindShare ?? input.inkindShare;
+  const scope = input.inkindScope ?? "all";
+  const newDeals = segmentDeals(input.warm) + segmentDeals(input.other);
+  const newSigned = newDeals * input.avgNewDeal;
+  const openClosed = input.openProspectInr * input.closeRate;
+  const signed = input.signedToDate + openClosed + newSigned;
+  const keep = 1 - input.inkindShare;
+  const cash =
+    scope === "all"
+      ? signed * keep * input.prefestShare
+      : (input.signedToDate * (1 - obs) + (openClosed + newSigned) * keep) * input.prefestShare;
+  const openDeals = (input.openProspectCount ?? 0) * input.closeRate;
+  return {
+    signed: fix(signed),
+    cashBeforeFest: fix(cash),
+    floorCash: floorCash(input),
+    newSigned: fix(newSigned),
+    openClosed: fix(openClosed),
+    newDeals: Math.round(newDeals * 1e6) / 1e6,
+    openDeals,
+    totalDeals: (input.signedDealsToDate ?? 0) + openDeals + newDeals,
+  };
+}
+
+export type ScenarioSettings = {
+  closeRate: number;
+  inkindShare: number;
+  warm: { response: number; proposalRate: number; signRate: number };
+  other: { response: number; proposalRate: number; signRate: number };
+};
+
+export type ModelSettings = {
+  avgNewDeal: number;
+  prefestShare: number;
+  inkindScope: InkindScope;
+  stretchWarmLeads: number;
+  stretchOtherLeads: number;
+  artistLeads: number;
+  base: ScenarioSettings;
+  stretch: ScenarioSettings;
+};
+
+export const DEFAULT_SETTINGS: ModelSettings = {
+  avgNewDeal: 125_000,
+  prefestShare: 0.75,
+  inkindScope: "all",
+  stretchWarmLeads: 85,
+  stretchOtherLeads: 42,
+  artistLeads: 30,
+  base: {
+    closeRate: 0.25,
+    inkindShare: 0.1,
+    warm: { response: 0.5, proposalRate: 0.4, signRate: 0.5 },
+    other: { response: 0.25, proposalRate: 0.04, signRate: 0.5 },
+  },
+  stretch: {
+    closeRate: 0.4,
+    inkindShare: 0.05,
+    warm: { response: 0.6, proposalRate: 0.5, signRate: 0.5 },
+    other: { response: 0.25, proposalRate: 0.08, signRate: 0.5 },
+  },
+};
+
+export type PlanState = {
+  signedToDate: number;
+  signedDealsToDate: number;
+  openProspectInr: number;
+  openProspectCount: number;
+  queueWarm: number;
+  queueOther: number;
+  observedInkindShare: number;
+};
+
+export type Scenario = "base" | "stretch";
+
+export function scenarioInput(state: PlanState, scenario: Scenario, settings: ModelSettings = DEFAULT_SETTINGS): ProjectionInput {
+  const sc = settings[scenario];
+  const warmLeads = scenario === "base" ? state.queueWarm : settings.stretchWarmLeads;
+  const otherLeads = scenario === "base" ? state.queueOther : settings.stretchOtherLeads;
+  return {
+    signedToDate: state.signedToDate,
+    openProspectInr: state.openProspectInr,
+    closeRate: sc.closeRate,
+    inkindShare: sc.inkindShare,
+    prefestShare: settings.prefestShare,
+    avgNewDeal: settings.avgNewDeal,
+    warm: { leads: warmLeads, ...sc.warm },
+    other: { leads: otherLeads, ...sc.other },
+    observedInkindShare: state.observedInkindShare,
+    inkindScope: settings.inkindScope,
+    signedDealsToDate: state.signedDealsToDate,
+    openProspectCount: state.openProspectCount,
+  };
+}
+
+export type PlanProjection = { floor: number; base: ProjectionResult; stretch: ProjectionResult };
+
+export function projectPlan(state: PlanState, settings: ModelSettings = DEFAULT_SETTINGS): PlanProjection {
+  return {
+    floor: floorCash({ ...scenarioInput(state, "base", settings) }),
+    base: project(scenarioInput(state, "base", settings)),
+    stretch: project(scenarioInput(state, "stretch", settings)),
+  };
+}
+
+type Patch = {
+  [K in keyof ModelSettings]?: ModelSettings[K] extends object ? Partial<{ [J in keyof ModelSettings[K]]: unknown }> : ModelSettings[K];
+};
+
+export function mergeSettings(patch: Patch = {}, from: ModelSettings = DEFAULT_SETTINGS): ModelSettings {
+  const p = patch as Record<string, unknown>;
+  const scen = (k: Scenario): ScenarioSettings => {
+    const q = (p[k] ?? {}) as Partial<ScenarioSettings>;
+    return {
+      ...from[k],
+      ...q,
+      warm: { ...from[k].warm, ...(q.warm ?? {}) },
+      other: { ...from[k].other, ...(q.other ?? {}) },
+    };
+  };
+  return { ...from, ...(patch as Partial<ModelSettings>), base: scen("base"), stretch: scen("stretch") };
+}
+=== lib\session.ts ===
+import { cookies } from "next/headers";
+
+export const ROLE_COOKIE = "dd_role";
+export const MEMBER_COOKIE = "dd_member";
+export const EVENT_COOKIE = "dd_event";
+
+export type DemoRole = "head" | "coordinator";
+
+export const DEFAULT_EVENT_ID = "saarang-2027";
+
+export async function getSession() {
+  const store = await cookies();
+  const role = (store.get(ROLE_COOKIE)?.value === "coordinator" ? "coordinator" : "head") as DemoRole;
+  const memberId = store.get(MEMBER_COOKIE)?.value ?? null;
+  const eventId = store.get(EVENT_COOKIE)?.value ?? DEFAULT_EVENT_ID;
+  return { role, memberId, eventId };
+}
+
+=== lib\types.ts ===
+import type { DemoRole } from "@/lib/session";
+import type { StatusCode } from "@/lib/domain/status";
+
+export type { Holiday } from "@/lib/domain/bizdays";
+
+export type EventInfo = {
+  id: string;
+  name: string;
+  is_seed: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  as_of: string | null;
+  weekly_target_default: number;
+  model_assumptions: Record<string, unknown>;
+};
+
+export type Ctx = {
+  eventId: string;
+  event: EventInfo;
+  role: DemoRole;
+  memberId: string | null;
+  isCloser: boolean;
+  todayIst: string;
+  isLocked: boolean;
+};
+
+export type TeamMember = {
+  id: string;
+  source_id: string | null;
+  name: string;
+  role: "member" | "manager";
+  is_closer: boolean;
+};
+
+export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
+
+export type NeedsUpdateRow = {
+  brand_id: string;
+  event_id: string;
+  company: string;
+  owner_id: string | null;
+  crm_status: StatusCode;
+  last_touch: string;
+  next_follow_up: string | null;
+  approx_amount_inr: number | null;
+  days_threshold: number;
+  idle_bdays: number;
+  reason: "idle" | "follow_up_due";
+};
+
+export type WeeklyProgressRow = {
+  event_id: string;
+  owner_id: string | null;
+  week_start: string;
+  outreached: number;
+  responded: number;
+  prospective_now: number;
+  converted_now: number;
+  rejected_now: number;
+  ghosting_now: number;
+  didnt_pick_now: number;
+};
+
+export type CoordSummaryRow = {
+  event_id: string;
+  owner_id: string | null;
+  total_outreached: number;
+  total_responded: number;
+  prospective: number;
+  converted: number;
+  rejected: number;
+  ghosting: number;
+  queued: number;
+  approx_amt_inr: number;
+  final_amt_inr: number;
+  last_active_at: string | null;
+};
+
+export type ChannelFunnelRow = {
+  event_id: string;
+  channel: string;
+  companies: number;
+  outreached: number;
+  responded: number;
+  prospective_or_better: number;
+  prospective_now: number;
+  converted: number;
+  rejected: number;
+  ghosting: number;
+  prospective_inr: number;
+  signed_inr: number;
+};
+
+export type InitiativeFunnelRow = {
+  event_id: string;
+  initiative_id: string;
+  companies: number;
+  queued: number;
+  outreached: number;
+  responded: number;
+  prospective_or_better: number;
+  converted: number;
+  signed_inr: number;
+};
+
+export type WarmthFunnelRow = {
+  event_id: string;
+  warmth: "warm" | "other";
+  companies: number;
+  queued: number;
+  outreached: number;
+  responded: number;
+  prospective_or_better: number;
+  converted: number;
+};
+
+export type DealDeskRow = {
+  deal_id: string;
+  event_id: string;
+  brand_id: string;
+  company: string;
+  owner_id: string | null;
+  stage: "prospecting" | "proposal_sent" | "negotiating";
+  proposed_inr: number;
+  next_follow_up: string | null;
+  last_touch: string;
+  idle_bdays: number;
+  nudges: number;
+};
+
+export type CashSummaryRow = {
+  event_id: string;
+  owner_id: string | null;
+  channel: string;
+  pre_fest_scheduled_inr: number;
+  pre_fest_collected_inr: number;
+  pre_fest_pending_inr: number;
+  post_fest_scheduled_inr: number;
+  post_fest_collected_inr: number;
+};
+
+export type StaleRule = { state_key: string; days_threshold: number };
+
+export type TeamGoal = {
+  scenario: "base" | "stretch";
+  signed_value_goal_inr: number | null;
+  cash_collected_goal_inr: number | null;
+  version_label: string | null;
+};
+
+export type WeeklyStrip = {
+  weekStart: string;
+  weekEnd: string;
+  target: number;
+  label: string;
+  source: "row" | "default";
+  outreached: number;
+  responded: number;
+  responseRate: number | null;
+  businessDaysLeft: number;
+  remaining: number;
+  requiredPerDay: number | null;
+};
+
+export type TeamWeekSummary = {
+  weekStart: string;
+  outreached: number;
+  responded: number;
+  target: number;
+  members: { memberId: string; name: string; target: number; outreached: number; responded: number }[];
+};
+=== lib\utils.ts ===
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+

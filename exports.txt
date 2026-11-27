@@ -1,0 +1,61 @@
+﻿C:\Users\poras wadhai\deal-drive\lib\db\queries\crm-companies.ts:56:export async function listCompanies(ctx: Ctx, filters: CrmFilters = {}, ownerId?: string | null): Promise<CrmPage> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\crm-deals.ts:7:export const OPEN_DEAL_STAGES = ["prospecting", "proposal_sent", "negotiating"] as const;
+C:\Users\poras wadhai\deal-drive\lib\db\queries\crm-deals.ts:11:export async function listOpenDeals(ctx: Ctx): Promise<DealDeskRow[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\crm-deals.ts:25:export async function updateDeal(ctx: Ctx, dealId: string, patch: { stage?: OpenDealStage; nextFollowUp?: string | null }): Promise<void> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\crm-deals.ts:47:export async function nudgeDeal(ctx: Ctx, dealId: string): Promise<void> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\crm-detail.ts:48:export async function getCompanyDetail(ctx: Ctx, brandId: string): Promise<CompanyDetail> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\crm-detail.ts:149:export async function upsertContact(ctx: Ctx, brandId: string, input: PocInput): Promise<ContactRow> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\crm-status.ts:97:export async function changeCompanyStatus(ctx: Ctx, input: StatusChangeInput): Promise<{ dealId: string | null; paymentsCreated: number }> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\crm-status.ts:141:export async function logActivity(
+C:\Users\poras wadhai\deal-drive\lib\db\queries\crm-status.ts:167:export async function setFollowUp(ctx: Ctx, brandId: string, date: string | null): Promise<void> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\crm-tasks.ts:19:export async function listTasks(ctx: Ctx, ownerId?: string | null): Promise<TaskRow[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\crm-tasks.ts:47:export async function createTask(ctx: Ctx, input: { title: string; dueOn?: string | null; brandId?: string | null }): Promise<TaskRow> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\crm-tasks.ts:81:export async function setTaskDone(ctx: Ctx, taskId: string, done: boolean): Promise<void> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\ctx.ts:9:export const getCtx = cache(async (routeRole?: DemoRole): Promise<Ctx> => {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\decisions.ts:13:export const STALE_PROSPECT_BDAYS = 3;
+C:\Users\poras wadhai\deal-drive\lib\db\queries\decisions.ts:16:export async function getDecisionSnapshot(ctx: Ctx): Promise<DecisionSnapshot> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\decisions.ts:53:export async function getDecisions(ctx: Ctx): Promise<Decision[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\events.ts:24:export function fallbackEvent(id: string): EventInfo {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\events.ts:37:export async function listEvents(): Promise<EventInfo[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\events.ts:44:export async function getEventInfo(eventId: string): Promise<EventInfo | null> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\events.ts:51:export const getEvent = getEventInfo;
+C:\Users\poras wadhai\deal-drive\lib\db\queries\head-a-initiatives.ts:69:export async function getInitiativeBoard(ctx: Ctx): Promise<InitiativeBoard> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\head-a-initiatives.ts:118:export async function updateInitiative(ctx: Ctx, campaignId: string, patch: InitiativePatch): Promise<void> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\head-a-overview.ts:14:export async function getOverviewData(ctx: Ctx): Promise<OverviewData> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\head-a-plan.ts:9:export const MIN_OBSERVED_N = 30;
+C:\Users\poras wadhai\deal-drive\lib\db\queries\head-a-plan.ts:42:export function buildModelRows(model: PlanModel): ModelRow[] {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\head-a-plan.ts:76:export function workedExample(model: PlanModel): string[] {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\head-a-plan.ts:93:export function observedRows(model: PlanModel, warmth: WarmthFunnelRow[]): ObservedRow[] {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\head-a-plan.ts:122:export async function getPlanView(ctx: Ctx): Promise<PlanView> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\head-a-team.ts:42:export async function getTeamTable(ctx: Ctx): Promise<TeamTableData> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\holidays.ts:4:export async function getHolidays(eventId: string): Promise<Holiday[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\initiatives.ts:35:export async function getInitiativeStatuses(ctx: Ctx): Promise<InitiativeStatus[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\overview.ts:16:export async function getHeadKpis(ctx: Ctx): Promise<HeadKpis> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\page.ts:4:export async function fetchAll<T>(table: string, select: string, eq: Record<string, string> = {}): Promise<T[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\page.ts:19:export const num = (value: unknown): number => Number(value ?? 0);
+C:\Users\poras wadhai\deal-drive\lib\db\queries\plan.ts:22:export function getPlanSettings(ctx: Ctx, patch: SettingsPatch = {}): ModelSettings {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\plan.ts:28:export async function getBrandRows(ctx: Ctx): Promise<BrandRow[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\plan.ts:51:export async function getSignedDeals(ctx: Ctx): Promise<SignedDeal[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\plan.ts:67:export async function getPlanState(ctx: Ctx): Promise<PlanState> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\plan.ts:84:export async function getPlanModel(ctx: Ctx, patch: SettingsPatch = {}): Promise<PlanModel> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\plan.ts:100:export async function getGates(ctx: Ctx): Promise<Gate[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\plan.ts:116:export async function getGateReport(ctx: Ctx): Promise<GateReport> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\plan.ts:133:export async function getLeadSupply(ctx: Ctx): Promise<LeadSupply> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\settings.ts:8:export function getAssumptions(ctx: Ctx): ModelAssumptions {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\settings.ts:12:export async function getStaleRules(ctx: Ctx): Promise<StaleRule[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\settings.ts:26:export async function getDefaultFollowUp(ctx: Ctx, status: StatusCode): Promise<string | null> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\settings.ts:32:export async function getTeamGoals(ctx: Ctx): Promise<{ base: TeamGoal | null; stretch: TeamGoal | null }> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\team.ts:4:export async function listTeam(eventId: string): Promise<TeamMember[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\team.ts:21:export function coordinatorsOf(team: TeamMember[]): TeamMember[] {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\views.ts:25:export async function getNeedsUpdate(ctx: Ctx, ownerId?: string | null): Promise<NeedsUpdateRow[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\views.ts:33:export async function getWeeklyProgress(ctx: Ctx, ownerId?: string | null): Promise<WeeklyProgressRow[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\views.ts:37:export async function getCoordSummary(ctx: Ctx, ownerId?: string | null): Promise<CoordSummaryRow[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\views.ts:41:export async function getCashSummary(ctx: Ctx, ownerId?: string | null): Promise<CashSummaryRow[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\views.ts:46:export async function getDealDesk(ctx: Ctx, ownerId?: string | null): Promise<DealDeskRow[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\views.ts:53:export async function getChannelFunnel(ctx: Ctx): Promise<ChannelFunnelRow[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\views.ts:58:export async function getInitiativeFunnel(ctx: Ctx): Promise<InitiativeFunnelRow[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\views.ts:63:export async function getWarmthFunnel(ctx: Ctx): Promise<WarmthFunnelRow[]> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\weekly.ts:10:export async function getWeeklyTarget(
+C:\Users\poras wadhai\deal-drive\lib\db\queries\weekly.ts:29:export async function getWeeklyStrip(ctx: Ctx, memberId?: string | null): Promise<WeeklyStrip> {
+C:\Users\poras wadhai\deal-drive\lib\db\queries\weekly.ts:59:export async function getTeamWeekSummary(ctx: Ctx): Promise<TeamWeekSummary> {
+C:\Users\poras wadhai\deal-drive\lib\seed\campusfest.ts:25:export async function loadCampusFest(source: Buffer | string, eventId: string): Promise<LoadReport> {

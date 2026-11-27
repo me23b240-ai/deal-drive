@@ -1,0 +1,24 @@
+﻿=== C:\Users\poras wadhai\deal-drive\app\api\campusfest\reset\route.ts ===
+export { dynamic } from "@/lib/api/not-implemented";
+import { notImplemented } from "@/lib/api/not-implemented";
+
+export function GET() {
+  return notImplemented();
+}
+
+export function POST() {
+  return notImplemented();
+}
+
+=== C:\Users\poras wadhai\deal-drive\app\api\campusfest\upload\route.ts ===
+export { dynamic } from "@/lib/api/not-implemented";
+import { notImplemented } from "@/lib/api/not-implemented";
+
+export function GET() {
+  return notImplemented();
+}
+
+export function POST() {
+  return notImplemented();
+}
+

@@ -1,69 +1,89 @@
-const IST = "Asia/Kolkata";
+export type Holiday = { day: string };
 
-export type Holiday = { on_date: string };
+const DAY_MS = 86_400_000;
+const istFormat = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Kolkata",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
 
-function toUtcDate(isoDate: string): Date {
-  return new Date(`${isoDate}T00:00:00+05:30`);
+function parseIso(iso: string): number {
+  const [y, m, d] = iso.split("-").map(Number);
+  return Date.UTC(y, m - 1, d);
 }
 
-function formatDateIST(date: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: IST,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+function formatMs(ms: number): string {
+  const d = new Date(ms);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
-function isoDow(isoDate: string): number {
-  const dow = toUtcDate(isoDate).getUTCDay();
+function holidaySet(holidays: Holiday[]): Set<string> {
+  return new Set(holidays.map((h) => h.day));
+}
+
+export function toIstDate(value: string | Date): string {
+  return istFormat.format(typeof value === "string" ? new Date(value) : value);
+}
+
+export function todayIST(now: Date = new Date()): string {
+  return istFormat.format(now);
+}
+
+export function addDays(iso: string, days: number): string {
+  return formatMs(parseIso(iso) + days * DAY_MS);
+}
+
+export function daysBetween(start: string, end: string): number {
+  return Math.round((parseIso(end) - parseIso(start)) / DAY_MS);
+}
+
+export function isoDow(iso: string): number {
+  const dow = new Date(parseIso(iso)).getUTCDay();
   return dow === 0 ? 7 : dow;
 }
 
-export function isBusinessDay(isoDate: string, holidays: Holiday[]): boolean {
-  const dow = isoDow(isoDate);
-  if (dow > 5) return false;
-  return !holidays.some((h) => h.on_date === isoDate);
+export function isBusinessDay(iso: string, holidays: Holiday[] = []): boolean {
+  return isoDow(iso) <= 5 && !holidaySet(holidays).has(iso);
 }
 
-export function businessDaysBetween(start: string, end: string, holidays: Holiday[]): number {
+/** Business days AFTER start, up to and including end (matches SQL business_days_between). */
+export function businessDaysBetween(start: string, end: string, holidays: Holiday[] = []): number {
   if (end <= start) return 0;
+  const hs = holidaySet(holidays);
+  const last = parseIso(end);
   let count = 0;
-  const cursor = toUtcDate(start);
-  const last = toUtcDate(end);
-  cursor.setUTCDate(cursor.getUTCDate() + 1);
-  while (cursor.getTime() <= last.getTime()) {
-    const iso = formatDateIST(cursor);
-    if (isBusinessDay(iso, holidays)) count += 1;
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  for (let ms = parseIso(start) + DAY_MS; ms <= last; ms += DAY_MS) {
+    const dow = new Date(ms).getUTCDay();
+    if (dow !== 0 && dow !== 6 && !hs.has(formatMs(ms))) count += 1;
   }
   return count;
 }
 
-export function addBusinessDays(start: string, days: number, holidays: Holiday[]): string {
-  const cursor = toUtcDate(start);
-  let remaining = days;
+export function addBusinessDays(start: string, days: number, holidays: Holiday[] = []): string {
+  const hs = holidaySet(holidays);
+  let ms = parseIso(start);
+  let remaining = Math.max(0, Math.floor(days));
   while (remaining > 0) {
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-    const iso = formatDateIST(cursor);
-    if (isBusinessDay(iso, holidays)) remaining -= 1;
+    ms += DAY_MS;
+    const dow = new Date(ms).getUTCDay();
+    if (dow !== 0 && dow !== 6 && !hs.has(formatMs(ms))) remaining -= 1;
   }
-  return formatDateIST(cursor);
+  return formatMs(ms);
 }
 
-export function weekStartIST(isoDate: string): string {
-  const cursor = toUtcDate(isoDate);
-  const dow = isoDow(isoDate);
-  cursor.setUTCDate(cursor.getUTCDate() - (dow - 1));
-  return formatDateIST(cursor);
+export function weekStartIST(iso: string): string {
+  return addDays(iso, -(isoDow(iso) - 1));
 }
 
-export function weekEndIST(isoDate: string): string {
-  const start = toUtcDate(weekStartIST(isoDate));
-  start.setUTCDate(start.getUTCDate() + 6);
-  return formatDateIST(start);
+export function weekEndIST(iso: string): string {
+  return addDays(weekStartIST(iso), 6);
 }
 
-export function businessDaysLeftInWeek(isoDate: string, holidays: Holiday[]): number {
-  return businessDaysBetween(isoDate, weekEndIST(isoDate), holidays) + (isBusinessDay(isoDate, holidays) ? 1 : 0);
+/** Business days left in the Mon-Sun week, counting today if it is a business day. */
+export function businessDaysLeftInWeek(iso: string, holidays: Holiday[] = []): number {
+  return businessDaysBetween(iso, weekEndIST(iso), holidays) + (isBusinessDay(iso, holidays) ? 1 : 0);
 }

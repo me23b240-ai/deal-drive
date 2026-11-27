@@ -1,0 +1,802 @@
+===== FILE: app\api\campusfest\reset\route.ts =====
+export { dynamic } from "@/lib/api/not-implemented";
+import { notImplemented } from "@/lib/api/not-implemented";
+
+export function GET() {
+  return notImplemented();
+}
+
+export function POST() {
+  return notImplemented();
+}
+
+===== FILE: app\api\campusfest\upload\route.ts =====
+export { dynamic } from "@/lib/api/not-implemented";
+import { notImplemented } from "@/lib/api/not-implemented";
+
+export function GET() {
+  return notImplemented();
+}
+
+export function POST() {
+  return notImplemented();
+}
+
+===== FILE: app\globals.css =====
+@import "tailwindcss";
+
+:root {
+  --background: #0d1013;
+  --card: #15191d;
+  --border: #2a2f35;
+  --foreground: #e8ecef;
+  --muted: #8b949e;
+  --accent: #2dd4bf;
+  --prospective: #7aa2ff;
+  --approx: #f5a524;
+  --danger: #f87171;
+  --success: #34d399;
+  --radius: 16px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-prospective: var(--prospective);
+  --color-approx: var(--approx);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --font-sans: var(--font-inter);
+  --radius-card: var(--radius);
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-inter), Inter, system-ui, sans-serif;
+}
+
+===== FILE: app\head\_tabs\benchmark.tsx =====
+export function BenchmarkTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">benchmark</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+===== FILE: app\head\_tabs\data-lab.tsx =====
+export function DataLabTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">data lab</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+===== FILE: app\head\_tabs\deal-desk.tsx =====
+export function DealDeskTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">deal desk</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+===== FILE: app\head\_tabs\eod.tsx =====
+export function EodTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">eod</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+===== FILE: app\head\_tabs\initiatives.tsx =====
+export function InitiativesTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">initiatives</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+===== FILE: app\head\_tabs\inventory.tsx =====
+export function InventoryTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">inventory</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+===== FILE: app\head\_tabs\overview.tsx =====
+export function OverviewTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">Overview</h1>
+      <p className="mt-2 text-sm text-muted">Head tabs and live KPIs land in later phases.</p>
+    </section>
+  );
+}
+
+===== FILE: app\head\_tabs\plan.tsx =====
+export function PlanTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">plan</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+===== FILE: app\head\_tabs\risks.tsx =====
+export function RisksTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">risks</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+===== FILE: app\head\_tabs\settings.tsx =====
+export function SettingsTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">settings</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+===== FILE: app\head\_tabs\team.tsx =====
+export function TeamTab() {
+  return (
+    <section className="rounded-[16px] border border-border bg-card p-6">
+      <h1 className="text-lg font-semibold">team</h1>
+      <p className="mt-2 text-sm text-muted">Placeholder for later phases.</p>
+    </section>
+  );
+}
+
+===== FILE: app\head\page.tsx =====
+import { Header } from "@/components/shell/Header";
+import { getSession } from "@/lib/session";
+import { OverviewTab } from "./_tabs/overview";
+
+export default async function HeadPage() {
+  const session = await getSession();
+  return (
+    <div className="min-h-full">
+      <Header role="head" eventId={session.eventId} memberId={session.memberId} />
+      <main className="p-6">
+        <OverviewTab />
+      </main>
+    </div>
+  );
+}
+
+===== FILE: app\layout.tsx =====
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
+
+export const metadata: Metadata = {
+  title: "Deal Drive",
+  description: "Sponsorship command center for Saarang 2027",
+};
+
+
+export default function RootLayout({ children }: LayoutProps<"/">) {
+  return (
+    <html lang="en" className={`${inter.variable} h-full antialiased`}>
+      <body className={`${inter.className} min-h-full bg-background text-foreground`}>
+        {children}
+      </body>
+    </html>
+  );
+}
+
+===== FILE: components\head\DealDesk.tsx =====
+export function DealDesk() {
+  return null;
+}
+
+===== FILE: components\head\DecisionsList.tsx =====
+export function DecisionsList() {
+  return null;
+}
+
+===== FILE: components\head\FunnelChart.tsx =====
+export function FunnelChart() {
+  return null;
+}
+
+===== FILE: components\head\GatesChart.tsx =====
+export function GatesChart() {
+  return null;
+}
+
+===== FILE: components\head\InitiativeCards.tsx =====
+export function InitiativeCards() {
+  return null;
+}
+
+===== FILE: components\head\KpiCards.tsx =====
+export function KpiCards() {
+  return null;
+}
+
+===== FILE: components\head\LeadSupply.tsx =====
+export function LeadSupply() {
+  return null;
+}
+
+===== FILE: components\head\ModelTable.tsx =====
+export function ModelTable() {
+  return null;
+}
+
+===== FILE: components\head\TeamTable.tsx =====
+export function TeamTable() {
+  return null;
+}
+
+===== FILE: components\shell\EventSwitch.tsx =====
+const EVENTS = [
+  { id: "saarang-2027", label: "Saarang 2027" },
+  { id: "campusfest-2025-work", label: "CampusFest work" },
+  { id: "campusfest-2025", label: "CampusFest original" },
+] as const;
+
+export function EventSwitch(props: { eventId: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      {EVENTS.map((event) => (
+        <span
+          key={event.id}
+          className={
+            event.id === props.eventId
+              ? "rounded-full border border-accent px-3 py-1 text-accent"
+              : "rounded-full border border-border px-3 py-1 text-muted"
+          }
+        >
+          {event.label}
+        </span>
+      ))}
+      {props.eventId === "campusfest-2025" ? (
+        <span className="rounded border border-approx/40 bg-approx/10 px-2 py-1 text-xs text-approx">
+          Locked original
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+===== FILE: components\shell\Header.tsx =====
+import { EventSwitch } from "@/components/shell/EventSwitch";
+import { RoleToggle } from "@/components/shell/RoleToggle";
+import type { DemoRole } from "@/lib/session";
+
+export function Header(props: {
+  role: DemoRole;
+  eventId: string;
+  memberId: string | null;
+}) {
+  return (
+    <header className="flex min-h-11 items-center justify-between gap-4 border-b border-border px-4 py-3">
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-semibold tracking-wide text-accent">Deal Drive</span>
+        <EventSwitch eventId={props.eventId} />
+      </div>
+      <RoleToggle role={props.role} />
+    </header>
+  );
+}
+
+===== FILE: components\shell\RoleToggle.tsx =====
+"use client";
+
+import type { DemoRole } from "@/lib/session";
+
+export function RoleToggle(props: { role: DemoRole }) {
+  const isHead = props.role === "head";
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Role"
+      className="relative flex h-11 min-h-11 w-[220px] items-center rounded-full border-2 border-accent/40 bg-card p-1"
+    >
+      <span
+        aria-hidden
+        className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full bg-accent/20 transition-transform duration-200"
+        style={{ transform: isHead ? "translateX(0)" : "translateX(100%)" }}
+      />
+      <a
+        href="/head"
+        role="radio"
+        aria-checked={isHead}
+        className={`relative z-10 flex h-full flex-1 items-center justify-center text-sm ${isHead ? "text-foreground" : "text-muted"}`}
+      >
+        Head
+      </a>
+      <a
+        href="/coordinator"
+        role="radio"
+        aria-checked={!isHead}
+        className={`relative z-10 flex h-full flex-1 items-center justify-center text-sm ${!isHead ? "text-foreground" : "text-muted"}`}
+      >
+        Coordinator
+      </a>
+    </div>
+  );
+}
+
+===== FILE: components\ui\button.tsx =====
+import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
+import { cn } from "@/lib/utils";
+
+const buttonVariants = cva(
+  "inline-flex items-center justify-center gap-2 rounded-[16px] text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default: "bg-accent text-background hover:bg-accent/90",
+        outline: "border border-border bg-card hover:bg-border/40",
+        ghost: "hover:bg-border/30",
+        danger: "bg-danger text-background",
+      },
+      size: {
+        default: "h-11 px-4",
+        sm: "h-9 px-3",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  },
+);
+
+export function Button({
+  className,
+  variant,
+  size,
+  asChild = false,
+  ...props
+}: React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot : "button";
+  return <Comp className={cn(buttonVariants({ variant, size, className }))} {...props} />;
+}
+
+===== FILE: docs\ARCHITECTURE.md =====
+# Deal Drive architecture
+
+Sponsorship command center for Saarang 2027 (simulated data) plus a CampusFest historical dataset.
+
+## Layout
+
+- `app/` App Router pages and route handlers. All mutating and reading UI goes through this layer.
+- `app/api/*` HTTP API. Every handler validates input with zod, then calls `lib/db/queries` only.
+- `components/` shell, coordinator, head, chat, and shadcn `ui/` primitives.
+- `lib/db/queries` is the single data-access layer. Pages, APIs, and chatbot tools must not run ad-hoc SQL.
+- `lib/domain` status rules, business days, money, channels, initiatives, rules engine, decisions.
+- `lib/model` projection, attribution, and gates (pure functions, unit tested).
+- `lib/ai` Gemini client, tools, draft guards, rate limit.
+- `lib/seed` CampusFest xlsx loader and Saarang simulated seed.
+- `scripts/` seed, verify, and chat golden tests (tsx, PowerShell-safe).
+- `supabase/migrations/` `001_core.sql`, `002_events_and_facts.sql`, `003_views.sql`. Apply in the Supabase SQL editor.
+- `tests/` vitest unit tests.
+- `data/private/` gitignored. All Saarang CRM rows are fictional.
+
+## Data flow
+
+1. Demo session is cookies: role `head` | `coordinator`, member id, event id.
+2. The server uses `SUPABASE_SERVICE_ROLE_KEY` and enforces scoping in queries. RLS is on with no policies (service role bypass). This is a demo limitation, not production auth.
+3. Seeded `is_seed` events (`campusfest-2025`) reject mutations with 403.
+4. Mutations call query helpers, then `revalidatePath` so Head and Coordinator see the same numbers.
+5. Chatbot tools call the same query layer; write tools insert `pending_actions` and only execute on confirm.
+
+## Time and money
+
+- Timezone: Asia/Kolkata.
+- Business days: Mon-Fri minus `holidays`. SQL `business_days_between` matches `lib/domain/bizdays.ts`.
+- Money: Indian grouping and compact lakh form from `lib/domain/money.ts`.
+
+## Events
+
+- `saarang-2027` live simulated demo (editable).
+- `campusfest-2025-work` working copy (editable).
+- `campusfest-2025` original locked seed (chatbot test set).
+
+===== FILE: docs\BUILD_BRIEF.md =====
+
+===== FILE: docs\CONTEXT.md =====
+
+===== FILE: lib\db\client.ts =====
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required env var ${name}`);
+  }
+  return value;
+}
+
+let cached: SupabaseClient | null = null;
+
+export function getServiceClient(): SupabaseClient {
+  if (cached) return cached;
+  cached = createClient(required("NEXT_PUBLIC_SUPABASE_URL"), required("SUPABASE_SERVICE_ROLE_KEY"), {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  return cached;
+}
+
+===== FILE: lib\db\queries\events.ts =====
+import { getServiceClient } from "@/lib/db/client";
+
+export type EventRow = {
+  id: string;
+  name: string;
+  is_seed: boolean;
+};
+
+export async function listEvents(): Promise<EventRow[]> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase
+    .from("events")
+    .select("id, name, is_seed")
+    .order("id");
+  if (error) throw error;
+  return (data ?? []) as EventRow[];
+}
+
+export async function getEvent(eventId: string): Promise<EventRow | null> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase
+    .from("events")
+    .select("id, name, is_seed")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (error) throw error;
+  return data as EventRow | null;
+}
+
+===== FILE: lib\db\queries\index.ts =====
+export * from "./events";
+
+===== FILE: lib\domain\bizdays.ts =====
+const IST = "Asia/Kolkata";
+
+export type Holiday = { on_date: string };
+
+function toUtcDate(isoDate: string): Date {
+  return new Date(`${isoDate}T00:00:00+05:30`);
+}
+
+function formatDateIST(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: IST,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function isoDow(isoDate: string): number {
+  const dow = toUtcDate(isoDate).getUTCDay();
+  return dow === 0 ? 7 : dow;
+}
+
+export function isBusinessDay(isoDate: string, holidays: Holiday[]): boolean {
+  const dow = isoDow(isoDate);
+  if (dow > 5) return false;
+  return !holidays.some((h) => h.on_date === isoDate);
+}
+
+export function businessDaysBetween(start: string, end: string, holidays: Holiday[]): number {
+  if (end <= start) return 0;
+  let count = 0;
+  const cursor = toUtcDate(start);
+  const last = toUtcDate(end);
+  cursor.setUTCDate(cursor.getUTCDate() + 1);
+  while (cursor.getTime() <= last.getTime()) {
+    const iso = formatDateIST(cursor);
+    if (isBusinessDay(iso, holidays)) count += 1;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return count;
+}
+
+export function addBusinessDays(start: string, days: number, holidays: Holiday[]): string {
+  const cursor = toUtcDate(start);
+  let remaining = days;
+  while (remaining > 0) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    const iso = formatDateIST(cursor);
+    if (isBusinessDay(iso, holidays)) remaining -= 1;
+  }
+  return formatDateIST(cursor);
+}
+
+export function weekStartIST(isoDate: string): string {
+  const cursor = toUtcDate(isoDate);
+  const dow = isoDow(isoDate);
+  cursor.setUTCDate(cursor.getUTCDate() - (dow - 1));
+  return formatDateIST(cursor);
+}
+
+export function weekEndIST(isoDate: string): string {
+  const start = toUtcDate(weekStartIST(isoDate));
+  start.setUTCDate(start.getUTCDate() + 6);
+  return formatDateIST(start);
+}
+
+export function businessDaysLeftInWeek(isoDate: string, holidays: Holiday[]): number {
+  return businessDaysBetween(isoDate, weekEndIST(isoDate), holidays) + (isBusinessDay(isoDate, holidays) ? 1 : 0);
+}
+
+===== FILE: lib\domain\channels.ts =====
+export const CHANNELS = [
+  "past_sponsors",
+  "other_fest",
+  "artist_linked",
+  "agency",
+  "csr",
+  "new_local",
+  "ipl_sports",
+  "institute",
+  "cold_database",
+  "inbound_referral",
+] as const;
+
+export type ChannelCode = (typeof CHANNELS)[number];
+
+export const CHANNEL_LABELS: Record<ChannelCode, string> = {
+  past_sponsors: "Past sponsors",
+  other_fest: "Other fest",
+  artist_linked: "Artist linked",
+  agency: "Agency",
+  csr: "CSR",
+  new_local: "New local",
+  ipl_sports: "IPL / sports",
+  institute: "Institute",
+  cold_database: "Cold database",
+  inbound_referral: "Inbound / referral",
+};
+
+export const WARM_CHANNELS: ReadonlySet<ChannelCode> = new Set([
+  "past_sponsors",
+  "other_fest",
+  "artist_linked",
+  "inbound_referral",
+  "institute",
+]);
+
+export function channelToInitiative(channel: ChannelCode): string {
+  if (channel === "artist_linked") return "bet-4";
+  if (
+    channel === "past_sponsors" ||
+    channel === "other_fest" ||
+    channel === "inbound_referral" ||
+    channel === "institute"
+  ) {
+    return "bet-3";
+  }
+  return "bet-5";
+}
+
+===== FILE: lib\domain\decisions.ts =====
+export type Decision = {
+  id: string;
+  title: string;
+  evidence: string;
+  action: string;
+};
+
+===== FILE: lib\domain\initiatives.ts =====
+export const INITIATIVES = ["bet-1", "bet-2", "bet-3", "bet-4", "bet-5"] as const;
+export type InitiativeId = (typeof INITIATIVES)[number];
+
+===== FILE: lib\domain\money.ts =====
+export function formatInr(amount: number): string {
+  const rounded = Math.round(amount);
+  const sign = rounded < 0 ? "-" : "";
+  const abs = Math.abs(rounded).toString();
+  const last3 = abs.slice(-3);
+  const rest = abs.slice(0, -3);
+  const grouped = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ",");
+  return `₹${sign}${rest ? `${grouped},${last3}` : last3}`;
+}
+
+export function formatLakh(amount: number): string {
+  return `₹${(amount / 100_000).toFixed(1)}L`;
+}
+
+===== FILE: lib\domain\rules-engine.ts =====
+export type RuleOp = ">=" | "<=" | ">" | "<" | "=";
+export type RuleClause = { m: string; op: RuleOp; v: number };
+export type RuleJson = { all: RuleClause[] };
+
+export function isRuleJson(value: unknown): value is RuleJson {
+  if (!value || typeof value !== "object") return false;
+  const all = (value as { all?: unknown }).all;
+  if (!Array.isArray(all)) return false;
+  return all.every(
+    (clause) =>
+      clause &&
+      typeof clause === "object" &&
+      typeof (clause as RuleClause).m === "string" &&
+      typeof (clause as RuleClause).op === "string" &&
+      typeof (clause as RuleClause).v === "number",
+  );
+}
+
+===== FILE: lib\domain\status.ts =====
+export const STATUS_CODES = [
+  "to_contact",
+  "send_mail",
+  "slabs_sent",
+  "didnt_pick",
+  "contacted",
+  "ghosting",
+  "prospective",
+  "converted",
+  "rejected",
+  "left_company",
+  "wrong_number",
+] as const;
+
+export type StatusCode = (typeof STATUS_CODES)[number];
+
+export const STATUS_LABELS: Record<StatusCode, string> = {
+  to_contact: "To Contact",
+  send_mail: "Send Mail",
+  slabs_sent: "Slabs sent",
+  didnt_pick: "Didn't Pick",
+  contacted: "Contacted",
+  ghosting: "Ghosting",
+  prospective: "Prospective",
+  converted: "Converted",
+  rejected: "Rejected",
+  left_company: "Left the Company",
+  wrong_number: "Wrong number",
+};
+
+export const RESPONDED_STATUSES: StatusCode[] = [
+  "contacted",
+  "prospective",
+  "converted",
+  "rejected",
+];
+
+===== FILE: lib\model\attribution.ts =====
+export type AttributionRow = { bet: string; cashOverFloor: number };
+
+export function emptyAttribution(): AttributionRow[] {
+  return [];
+}
+
+===== FILE: lib\model\gates.ts =====
+export type Gate = { gateOn: string; baseInr: number; stretchInr: number };
+
+===== FILE: lib\model\projection.ts =====
+export type ProjectionInput = {
+  signedToDate: number;
+  openProspectInr: number;
+  closeRate: number;
+  inkindShare: number;
+  prefestShare: number;
+  avgNewDeal: number;
+  warm: { leads: number; response: number; proposalRate: number; signRate: number };
+  other: { leads: number; response: number; proposalRate: number; signRate: number };
+};
+
+export type ProjectionResult = {
+  signed: number;
+  cashBeforeFest: number;
+};
+
+export function project(input: ProjectionInput): ProjectionResult {
+  const warmDeals =
+    input.warm.leads * input.warm.response * input.warm.proposalRate * input.warm.signRate;
+  const otherDeals =
+    input.other.leads * input.other.response * input.other.proposalRate * input.other.signRate;
+  const signed =
+    input.signedToDate +
+    input.openProspectInr * input.closeRate +
+    (warmDeals + otherDeals) * input.avgNewDeal;
+  const cashBeforeFest = signed * (1 - input.inkindShare) * input.prefestShare;
+  return { signed, cashBeforeFest };
+}
+
+===== FILE: lib\session.ts =====
+import { cookies } from "next/headers";
+
+export const ROLE_COOKIE = "dd_role";
+export const MEMBER_COOKIE = "dd_member";
+export const EVENT_COOKIE = "dd_event";
+
+export type DemoRole = "head" | "coordinator";
+
+export const DEFAULT_EVENT_ID = "saarang-2027";
+
+export async function getSession() {
+  const store = await cookies();
+  const role = (store.get(ROLE_COOKIE)?.value === "coordinator" ? "coordinator" : "head") as DemoRole;
+  const memberId = store.get(MEMBER_COOKIE)?.value ?? null;
+  const eventId = store.get(EVENT_COOKIE)?.value ?? DEFAULT_EVENT_ID;
+  return { role, memberId, eventId };
+}
+
+===== FILE: package.json =====
+{
+  "name": "deal-drive",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@google/genai": "^3.6.1",
+    "@radix-ui/react-slot": "^1.5.0",
+    "@supabase/supabase-js": "^2.119.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
+    "date-fns-tz": "^3.2.0",
+    "dotenv": "^18.0.10",
+    "exceljs": "^4.4.0",
+    "lucide-react": "^1.81.0",
+    "next": "16.4.6",
+    "papaparse": "^5.7.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "recharts": "^3.11.1",
+    "tailwind-merge": "^3.7.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "4.3.3",
+    "@types/node": "^24.19.4",
+    "@types/papaparse": "^5.5.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.6",
+    "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.1.2"
+  }
+}
+

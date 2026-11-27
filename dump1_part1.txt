@@ -1,0 +1,718 @@
+﻿=== docs\CONTEXT.md ===
+=== docs\slide1-anchors.md ===
+# Slide 1 anchors (CampusFest 2025, computed by npm run verify)
+
+- Brands 180, contacts 270, campaigns 6, opportunities 58
+- Signed: 24 of 58 (41.4%)
+- Confirmed value INR 2240000 = cash 2000000 (20 deals) + in-kind 240000 (4 deals)
+- In-kind share 10.7%
+- Average signed deal INR 93333
+- Qualified brands (latest) 60
+- Opt-outs 7 {"SC01":7}
+- Days created to confirmed: median 10, min 5, max 13
+- WARM (SC02+SC04+SC05): distinct brands touched 44, opportunities 25, signed 24
+- NON-WARM (SC01+SC03+SC06): distinct brands touched 141, signed 0
+- Campaign-level sum for non-warm (double counts brands): 148; SC01+SC03 distinct: 122
+
+## Per campaign
+
+| Campaign | Brands touched | Opportunities | Signed | Signed value INR |
+|---|---|---|---|---|
+| SC01 | 91 | 11 | 0 | 0 |
+| SC02 | 8 | 9 | 8 | 785000 |
+| SC03 | 37 | 12 | 0 | 0 |
+| SC04 | 17 | 7 | 7 | 670000 |
+| SC05 | 19 | 9 | 9 | 785000 |
+| SC06 | 20 | 10 | 0 | 0 |
+
+=== package.json ===
+{
+  "name": "deal-drive",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "verify": "tsx scripts/verify.ts",
+    "seed:campusfest": "tsx scripts/seed-campusfest.ts",
+    "seed:saarang": "tsx scripts/seed-saarang.ts",
+    "test:chat": "tsx scripts/test-chat.ts",
+    "verify:saarang": "tsx scripts/verify-saarang.ts",
+    "verify:queries": "tsx scripts/verify-queries.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^3.6.1",
+    "@radix-ui/react-slot": "^1.5.0",
+    "@supabase/supabase-js": "^2.119.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
+    "date-fns-tz": "^3.2.0",
+    "dotenv": "^18.0.10",
+    "exceljs": "^4.4.0",
+    "lucide-react": "^1.81.0",
+    "next": "16.4.6",
+    "papaparse": "^5.7.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "recharts": "^3.11.1",
+    "tailwind-merge": "^3.7.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "4.3.3",
+    "@types/node": "^24.19.4",
+    "@types/papaparse": "^5.5.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.6",
+    "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.1.2"
+  }
+}
+
+=== lib\api\not-implemented.ts ===
+export const dynamic = "force-dynamic";
+
+export function notImplemented() {
+  return Response.json({ error: "Not implemented yet" }, { status: 501 });
+}
+
+=== lib\api\respond.ts ===
+import { errorMessage, errorStatus } from "@/lib/db/errors";
+
+export function apiOk<T>(data: T): Response {
+  return Response.json({ ok: true, data });
+}
+
+export function apiFail(error: unknown): Response {
+  return Response.json({ ok: false, error: errorMessage(error) }, { status: errorStatus(error) });
+}
+=== lib\db\queries\ctx.ts ===
+import { cache } from "react";
+import { getSession, DEFAULT_EVENT_ID, type DemoRole } from "@/lib/session";
+import { toIstDate, todayIST } from "@/lib/domain/bizdays";
+import { fallbackEvent, getEventInfo } from "@/lib/db/queries/events";
+import { listTeam } from "@/lib/db/queries/team";
+import type { Ctx } from "@/lib/types";
+
+/** Pages pass their route role ("head" or "coordinator") so the URL decides the role. */
+export const getCtx = cache(async (routeRole?: DemoRole): Promise<Ctx> => {
+  const session = await getSession();
+  const role = routeRole ?? session.role;
+
+  let event = null;
+  try {
+    event = (await getEventInfo(session.eventId)) ?? (await getEventInfo(DEFAULT_EVENT_ID));
+  } catch {
+    event = null;
+  }
+  const info = event ?? fallbackEvent(session.eventId);
+
+  let memberId = session.memberId;
+  let isCloser = false;
+  if (role === "coordinator") {
+    const team = await listTeam(info.id).catch(() => []);
+    const coordinators = team.filter((m) => m.role === "member");
+    const mine = coordinators.find((m) => m.id === memberId) ?? coordinators[0];
+    memberId = mine?.id ?? null;
+    isCloser = mine?.is_closer ?? false;
+  }
+
+  return {
+    eventId: info.id,
+    event: info,
+    role,
+    memberId,
+    isCloser,
+    todayIst: info.as_of ? toIstDate(info.as_of) : todayIST(),
+    isLocked: info.is_seed,
+  };
+});
+=== lib\db\queries\decisions.ts ===
+import { requireHead } from "../guards";
+import type { Ctx } from "../../types";
+import { addDays, businessDaysBetween, businessDaysLeftInWeek, weekEndIST, weekStartIST } from "../../domain/bizdays";
+import { buildDecisions, type Decision, type DecisionSnapshot } from "../../domain/decisions";
+import { coordinatorStat, ownershipConflicts, staleProspects } from "../../model/derive";
+import { getHolidays } from "./holidays";
+import { getInitiativeStatuses } from "./initiatives";
+import { getBrandRows, getGateReport } from "./plan";
+import { coordinatorsOf, listTeam } from "./team";
+import { getTeamWeekSummary } from "./weekly";
+
+/** A prospect with no touch for more than this many business days is stale. */
+export const STALE_PROSPECT_BDAYS = 3;
+
+/** Everything buildDecisions needs, read from the database. No payment rule: payments are 75/25 by phase, not due dates. */
+export async function getDecisionSnapshot(ctx: Ctx): Promise<DecisionSnapshot> {
+  requireHead(ctx);
+  const [team, holidays, brands, week, gateReport, initiatives] = await Promise.all([
+    listTeam(ctx.eventId),
+    getHolidays(ctx.eventId),
+    getBrandRows(ctx),
+    getTeamWeekSummary(ctx),
+    getGateReport(ctx),
+    getInitiativeStatuses(ctx),
+  ]);
+  const nameOf = new Map(team.map((m) => [m.id, m.name]));
+  const weekStart = weekStartIST(ctx.todayIst);
+  const inWeek = businessDaysBetween(addDays(weekStart, -1), weekEndIST(weekStart), holidays);
+  const left = businessDaysLeftInWeek(ctx.todayIst, holidays);
+
+  const coordinators = coordinatorsOf(team).map((m) => {
+    const w = week.members.find((x) => x.memberId === m.id);
+    return coordinatorStat(
+      { id: m.id, name: m.name },
+      brands,
+      { outreached: w?.outreached ?? 0, target: w?.target ?? ctx.event.weekly_target_default },
+      ctx.todayIst,
+      holidays,
+      { inWeek, left },
+    );
+  });
+
+  return {
+    initiatives: initiatives.map((i) => ({ code: i.code, name: i.name, badge: i.badge, reason: i.reason })),
+    coordinators,
+    staleProspects: staleProspects(brands, STALE_PROSPECT_BDAYS, ctx.todayIst, holidays, nameOf),
+    overduePayments: [],
+    ownershipConflicts: ownershipConflicts(brands, nameOf),
+    gates: gateReport.statuses,
+  };
+}
+
+export async function getDecisions(ctx: Ctx): Promise<Decision[]> {
+  return buildDecisions(await getDecisionSnapshot(ctx));
+}
+=== lib\db\queries\events.ts ===
+import { getServiceClient } from "@/lib/db/client";
+import type { EventInfo } from "@/lib/types";
+
+const COLUMNS = "id, name, is_seed, starts_at, ends_at, as_of, weekly_target_default, model_assumptions";
+
+export type EventRow = Pick<EventInfo, "id" | "name" | "is_seed">;
+
+function toInfo(row: Record<string, unknown>): EventInfo {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? row.id),
+    is_seed: Boolean(row.is_seed),
+    starts_at: (row.starts_at as string | null) ?? null,
+    ends_at: (row.ends_at as string | null) ?? null,
+    as_of: (row.as_of as string | null) ?? null,
+    weekly_target_default: typeof row.weekly_target_default === "number" ? row.weekly_target_default : 10,
+    model_assumptions:
+      row.model_assumptions && typeof row.model_assumptions === "object"
+        ? (row.model_assumptions as Record<string, unknown>)
+        : {},
+  };
+}
+
+export function fallbackEvent(id: string): EventInfo {
+  return {
+    id,
+    name: id,
+    is_seed: id === "campusfest-2025",
+    starts_at: null,
+    ends_at: null,
+    as_of: null,
+    weekly_target_default: 10,
+    model_assumptions: {},
+  };
+}
+
+export async function listEvents(): Promise<EventInfo[]> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.from("events").select(COLUMNS).order("id");
+  if (error) throw new Error(`events: ${error.message}`);
+  return (data ?? []).map((row) => toInfo(row as Record<string, unknown>));
+}
+
+export async function getEventInfo(eventId: string): Promise<EventInfo | null> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.from("events").select(COLUMNS).eq("id", eventId).maybeSingle();
+  if (error) throw new Error(`events: ${error.message}`);
+  return data ? toInfo(data as Record<string, unknown>) : null;
+}
+
+export const getEvent = getEventInfo;
+=== lib\db\queries\holidays.ts ===
+import { getServiceClient } from "@/lib/db/client";
+import type { Holiday } from "@/lib/domain/bizdays";
+
+export async function getHolidays(eventId: string): Promise<Holiday[]> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.from("holidays").select("day").eq("event_id", eventId);
+  if (error) throw new Error(`holidays: ${error.message}`);
+  return (data ?? []).map((row) => ({ day: String(row.day) }));
+}
+=== lib\db\queries\index.ts ===
+export * from "./ctx";
+export * from "./events";
+export * from "./holidays";
+export * from "./settings";
+export * from "./team";
+export * from "./views";
+export * from "./weekly";
+export * from "./plan";
+export * from "./overview";
+export * from "./initiatives";
+export * from "./decisions";
+=== lib\db\queries\initiatives.ts ===
+import { requireHead } from "../guards";
+import type { Ctx } from "../../types";
+import { dateNum, isRuleJson, type Metrics, type RuleJson } from "../../domain/rules-engine";
+import { evaluateInitiative, type InitiativeRules } from "../../domain/initiatives";
+import {
+  cashTermsMetrics,
+  dealDeskMetrics,
+  experimentArms,
+  laneMetrics,
+  PLAN_START,
+  type Experiment,
+  type MetricSet,
+} from "../../model/derive";
+import { fetchAll, num } from "./page";
+import { getBrandRows, getSignedDeals } from "./plan";
+import { getDealDesk, getInitiativeFunnel } from "./views";
+
+type Evaluation = ReturnType<typeof evaluateInitiative>;
+type CodeArg = Parameters<typeof evaluateInitiative>[0];
+
+export type InitiativeStatus = {
+  campaignId: string;
+  code: string;
+  name: string;
+  badge: Evaluation["badge"];
+  reason: Evaluation["reason"];
+  evaluation: Evaluation;
+  metrics: Metrics;
+  experiment: Experiment | null;
+};
+
+const asRule = (value: unknown): RuleJson | null => (isRuleJson(value) ? value : null);
+
+/** The five bets with their live badge. Rules come from campaigns.scale_rule / change_rule / stop_rule. */
+export async function getInitiativeStatuses(ctx: Ctx): Promise<InitiativeStatus[]> {
+  requireHead(ctx);
+  const [campaigns, funnel, desk, signed, brands, drafts, events] = await Promise.all([
+    fetchAll<Record<string, unknown>>("campaigns", "id, source_id, name, scale_rule, change_rule, stop_rule", {
+      event_id: ctx.eventId,
+      kind: "initiative",
+    }),
+    getInitiativeFunnel(ctx),
+    getDealDesk(ctx),
+    getSignedDeals(ctx),
+    getBrandRows(ctx),
+    fetchAll<Record<string, unknown>>("email_drafts", "brand_id, personalised, status", { event_id: ctx.eventId }),
+    fetchAll<Record<string, unknown>>("status_events", "brand_id, to_status", { event_id: ctx.eventId }),
+  ]);
+
+  const today = dateNum(ctx.todayIst);
+  const deskRows = desk.map((r) => ({
+    company: r.company,
+    stage: String(r.stage),
+    proposed_inr: num(r.proposed_inr),
+    idle_bdays: num(r.idle_bdays),
+    nudges: num(r.nudges),
+  }));
+  const draftRows = drafts.map((r) => ({ brand_id: String(r.brand_id), personalised: Boolean(r.personalised), status: String(r.status) }));
+  const eventRows = events.map((r) => ({ brand_id: String(r.brand_id), to_status: String(r.to_status) }));
+
+  const out: InitiativeStatus[] = [];
+  for (const c of campaigns) {
+    const campaignId = String(c.id);
+    const code = String(c.source_id);
+    let set: MetricSet = { metrics: { today }, counts: {} };
+    let experiment: Experiment | null = null;
+
+    if (code === "bet-1") {
+      set = dealDeskMetrics(deskRows, today);
+    } else if (code === "bet-2") {
+      set = cashTermsMetrics(signed, PLAN_START, today);
+    } else {
+      set = laneMetrics(funnel.find((f) => f.initiative_id === campaignId), today);
+      if (code === "bet-5") {
+        const ids = new Set(brands.filter((b) => b.initiative_id === campaignId).map((b) => b.id));
+        experiment = experimentArms(ids, draftRows, eventRows);
+        set = {
+          metrics: { ...set.metrics, personalised_vs_template_ratio: experiment.ratio },
+          counts: {
+            ...set.counts,
+            personalised_vs_template_ratio:
+              experiment.ratio === undefined
+                ? `personalised ${experiment.personalised.n} sent vs template ${experiment.template.n} sent`
+                : `personalised ${experiment.personalised.reached} of ${experiment.personalised.n} vs template ${experiment.template.reached} of ${experiment.template.n} reached proposal`,
+          },
+        };
+      }
+    }
+
+    const rules: InitiativeRules = { scale: asRule(c.scale_rule), change: asRule(c.change_rule), stop: asRule(c.stop_rule) };
+    const evaluation = evaluateInitiative(code as CodeArg, rules, set.metrics, set.counts);
+    out.push({
+      campaignId,
+      code,
+      name: String(c.name),
+      badge: evaluation.badge,
+      reason: evaluation.reason,
+      evaluation,
+      metrics: set.metrics,
+      experiment,
+    });
+  }
+  return out.sort((a, b) => a.code.localeCompare(b.code));
+}
+=== lib\db\queries\overview.ts ===
+import { requireHead } from "../guards";
+import type { Ctx } from "../../types";
+import { buildKpis, type BrandRow, type Kpis, type WarmthRow } from "../../model/derive";
+import { fetchAll, num } from "./page";
+import { getBrandRows, getSignedDeals } from "./plan";
+
+export type HeadKpis = Kpis & {
+  prospective: { count: number; inr: number };
+  signedInr: number;
+  signedDeals: number;
+  cashScheduledInr: number;
+  cashCollectedInr: number;
+  cashPendingInr: number;
+};
+
+export async function getHeadKpis(ctx: Ctx): Promise<HeadKpis> {
+  requireHead(ctx);
+  const [warmth, cash, brands, signed] = await Promise.all([
+    fetchAll<Record<string, unknown>>("v_warmth_funnel", "*", { event_id: ctx.eventId }),
+    fetchAll<Record<string, unknown>>("v_cash_summary", "*", { event_id: ctx.eventId }),
+    getBrandRows(ctx),
+    getSignedDeals(ctx),
+  ]);
+  const rows: WarmthRow[] = warmth.map((r) => ({
+    companies: num(r.companies),
+    outreached: num(r.outreached),
+    responded: num(r.responded),
+    prospective_or_better: num(r.prospective_or_better),
+    converted: num(r.converted),
+  }));
+  const sum = (key: string): number => cash.reduce((t, r) => t + num(r[key]), 0);
+  const scheduled = sum("pre_fest_scheduled_inr") + sum("post_fest_scheduled_inr");
+  const collected = sum("pre_fest_collected_inr") + sum("post_fest_collected_inr");
+  const prospects: BrandRow[] = brands.filter((b) => b.crm_status === "prospective");
+  return {
+    ...buildKpis(rows),
+    prospective: { count: prospects.length, inr: prospects.reduce((t, b) => t + b.approx_amount_inr, 0) },
+    signedInr: signed.reduce((t, d) => t + d.amountInr, 0),
+    signedDeals: signed.length,
+    cashScheduledInr: scheduled,
+    cashCollectedInr: collected,
+    cashPendingInr: scheduled - collected,
+  };
+}
+=== lib\db\queries\page.ts ===
+import { getServiceClient } from "../client";
+
+/** Reads every row of a table or view (1000 per page), filtered by equality. */
+export async function fetchAll<T>(table: string, select: string, eq: Record<string, string> = {}): Promise<T[]> {
+  const supabase = getServiceClient();
+  const out: T[] = [];
+  for (let from = 0; ; from += 1000) {
+    let query = supabase.from(table).select(select).range(from, from + 999);
+    for (const [column, value] of Object.entries(eq)) query = query.eq(column, value);
+    const { data, error } = await query;
+    if (error) throw new Error(`${table}: ${error.message}`);
+    const rows = (data ?? []) as unknown as T[];
+    out.push(...rows);
+    if (rows.length < 1000) break;
+  }
+  return out;
+}
+
+export const num = (value: unknown): number => Number(value ?? 0);
+=== lib\db\queries\plan.ts ===
+import { requireHead } from "../guards";
+import type { Ctx } from "../../types";
+import { toIstDate } from "../../domain/bizdays";
+import { attributeStretch, type Attribution } from "../../model/attribution";
+import {
+  closingOnlyPhase,
+  gateStatuses,
+  missedBaseGate,
+  paceLine,
+  signedAsOf,
+  type Gate,
+  type GateStatus,
+  type PacePoint,
+} from "../../model/gates";
+import { PLAN_END, PLAN_START, buildPlanState, leadSupply, type BrandRow, type LeadSupply, type SignedDeal } from "../../model/derive";
+import { DEFAULT_SETTINGS, mergeSettings, projectPlan, type ModelSettings, type PlanProjection, type PlanState } from "../../model/projection";
+import { fetchAll, num } from "./page";
+
+type SettingsPatch = Parameters<typeof mergeSettings>[0];
+
+/** Plan settings live in events.model_assumptions.plan (same shape as ModelSettings, every field optional). */
+export function getPlanSettings(ctx: Ctx, patch: SettingsPatch = {}): ModelSettings {
+  const stored = ctx.event.model_assumptions.plan;
+  const base = stored && typeof stored === "object" ? mergeSettings(stored as SettingsPatch, DEFAULT_SETTINGS) : DEFAULT_SETTINGS;
+  return mergeSettings(patch, base);
+}
+
+export async function getBrandRows(ctx: Ctx): Promise<BrandRow[]> {
+  const rows = await fetchAll<Record<string, unknown>>(
+    "brands",
+    "id, name, owner_id, crm_status, source_channel, approx_amount_inr, first_outreach_at, last_touch_at, next_follow_up, initiative_id",
+    { event_id: ctx.eventId },
+  );
+  return rows
+    .filter((r) => r.crm_status !== null)
+    .map((r) => ({
+      id: String(r.id),
+      name: String(r.name),
+      owner_id: (r.owner_id as string | null) ?? null,
+      crm_status: (r.crm_status as string | null) ?? null,
+      source_channel: (r.source_channel as string | null) ?? null,
+      approx_amount_inr: num(r.approx_amount_inr),
+      first_outreach_at: (r.first_outreach_at as string | null) ?? null,
+      last_touch_at: (r.last_touch_at as string | null) ?? null,
+      next_follow_up: (r.next_follow_up as string | null) ?? null,
+      initiative_id: (r.initiative_id as string | null) ?? null,
+    }));
+}
+
+/** Confirmed deals. The confirmation date is the MoU date, else the day the stage changed. */
+export async function getSignedDeals(ctx: Ctx): Promise<SignedDeal[]> {
+  const rows = await fetchAll<Record<string, unknown>>(
+    "deals",
+    "id, brand_id, signed_value_inr, signed_cash_inr, signed_in_kind_inr, mou_signed_at, stage_changed_at, created_at",
+    { event_id: ctx.eventId, stage: "partner_confirmed" },
+  );
+  return rows.map((r) => ({
+    dealId: String(r.id),
+    brandId: String(r.brand_id),
+    amountInr: num(r.signed_value_inr),
+    cashInr: num(r.signed_cash_inr),
+    inKindInr: num(r.signed_in_kind_inr),
+    confirmedOn: r.mou_signed_at ? String(r.mou_signed_at) : toIstDate(String(r.stage_changed_at ?? r.created_at)),
+  }));
+}
+
+export async function getPlanState(ctx: Ctx): Promise<PlanState> {
+  requireHead(ctx);
+  const [brands, signed] = await Promise.all([getBrandRows(ctx), getSignedDeals(ctx)]);
+  return buildPlanState(brands, signed);
+}
+
+export type PlanModel = {
+  settings: ModelSettings;
+  state: PlanState;
+  projection: PlanProjection;
+  attribution: Attribution;
+  leadSupply: LeadSupply;
+  planStart: string;
+  planEnd: string;
+};
+
+/** Everything the Plan tab needs. Pass a patch for what-if runs (chatbot run_projection). */
+export async function getPlanModel(ctx: Ctx, patch: SettingsPatch = {}): Promise<PlanModel> {
+  requireHead(ctx);
+  const [brands, signed] = await Promise.all([getBrandRows(ctx), getSignedDeals(ctx)]);
+  const settings = getPlanSettings(ctx, patch);
+  const state = buildPlanState(brands, signed);
+  return {
+    settings,
+    state,
+    projection: projectPlan(state, settings),
+    attribution: attributeStretch(state, settings),
+    leadSupply: leadSupply(brands, settings),
+    planStart: PLAN_START,
+    planEnd: PLAN_END,
+  };
+}
+
+export async function getGates(ctx: Ctx): Promise<Gate[]> {
+  const rows = await fetchAll<Record<string, unknown>>("portfolio_gates", "gate_date, base_signed_inr, stretch_signed_inr", { event_id: ctx.eventId });
+  return rows
+    .map((r) => ({ gateOn: String(r.gate_date), baseInr: num(r.base_signed_inr), stretchInr: num(r.stretch_signed_inr) }))
+    .sort((a, b) => a.gateOn.localeCompare(b.gateOn));
+}
+
+export type GateReport = {
+  statuses: GateStatus[];
+  closingOnly: boolean;
+  missed: GateStatus | null;
+  pace: PacePoint[];
+  actualToday: number;
+  signedByDay: { date: string; cumulativeInr: number }[];
+};
+
+export async function getGateReport(ctx: Ctx): Promise<GateReport> {
+  requireHead(ctx);
+  const [gates, signed, model] = await Promise.all([getGates(ctx), getSignedDeals(ctx), getPlanModel(ctx)]);
+  const deals = signed.map((d) => ({ confirmedOn: d.confirmedOn, amountInr: d.amountInr }));
+  const statuses = gateStatuses(gates, deals, ctx.todayIst);
+  const actualToday = signedAsOf(deals, ctx.todayIst);
+  const days = [...new Set(deals.map((d) => d.confirmedOn))].sort();
+  return {
+    statuses,
+    closingOnly: closingOnlyPhase(gates, ctx.todayIst),
+    missed: missedBaseGate(statuses),
+    pace: paceLine(gates, ctx.todayIst, actualToday, PLAN_END, model.projection.base.signed, model.projection.stretch.signed),
+    actualToday,
+    signedByDay: days.map((date) => ({ date, cumulativeInr: signedAsOf(deals, date) })),
+  };
+}
+
+export async function getLeadSupply(ctx: Ctx): Promise<LeadSupply> {
+  requireHead(ctx);
+  return leadSupply(await getBrandRows(ctx), getPlanSettings(ctx));
+}
+=== lib\db\queries\settings.ts ===
+import { getServiceClient } from "@/lib/db/client";
+import { addBusinessDays } from "@/lib/domain/bizdays";
+import type { StatusCode } from "@/lib/domain/status";
+import { getHolidays } from "@/lib/db/queries/holidays";
+import { resolveAssumptions, type ModelAssumptions } from "@/lib/model/assumptions";
+import type { Ctx, StaleRule, TeamGoal } from "@/lib/types";
+
+export function getAssumptions(ctx: Ctx): ModelAssumptions {
+  return resolveAssumptions(ctx.event.model_assumptions);
+}
+
+export async function getStaleRules(ctx: Ctx): Promise<StaleRule[]> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase
+    .from("stale_rules")
+    .select("state_key, days_threshold")
+    .eq("event_id", ctx.eventId);
+  if (error) throw new Error(`stale_rules: ${error.message}`);
+  return (data ?? []).map((row) => ({
+    state_key: String(row.state_key),
+    days_threshold: Number(row.days_threshold),
+  }));
+}
+
+/** Default next follow-up: today plus the status threshold in business days (null if no rule). */
+export async function getDefaultFollowUp(ctx: Ctx, status: StatusCode): Promise<string | null> {
+  const [rules, holidays] = await Promise.all([getStaleRules(ctx), getHolidays(ctx.eventId)]);
+  const rule = rules.find((r) => r.state_key === status);
+  return rule ? addBusinessDays(ctx.todayIst, rule.days_threshold, holidays) : null;
+}
+
+export async function getTeamGoals(ctx: Ctx): Promise<{ base: TeamGoal | null; stretch: TeamGoal | null }> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase
+    .from("targets")
+    .select("scenario, signed_value_goal_inr, cash_collected_goal_inr, version_label, effective_at")
+    .eq("event_id", ctx.eventId)
+    .order("effective_at", { ascending: false });
+  if (error) throw new Error(`targets: ${error.message}`);
+  const pick = (scenario: "base" | "stretch"): TeamGoal | null => {
+    const row = (data ?? []).find((r) => r.scenario === scenario);
+    if (!row) return null;
+    return {
+      scenario,
+      signed_value_goal_inr: row.signed_value_goal_inr === null ? null : Number(row.signed_value_goal_inr),
+      cash_collected_goal_inr: row.cash_collected_goal_inr === null ? null : Number(row.cash_collected_goal_inr),
+      version_label: (row.version_label as string | null) ?? null,
+    };
+  };
+  return { base: pick("base"), stretch: pick("stretch") };
+}
+=== lib\db\queries\team.ts ===
+import { getServiceClient } from "@/lib/db/client";
+import type { TeamMember } from "@/lib/types";
+
+export async function listTeam(eventId: string): Promise<TeamMember[]> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase
+    .from("team_members")
+    .select("id, source_id, name, role, is_closer")
+    .eq("event_id", eventId)
+    .order("name");
+  if (error) throw new Error(`team_members: ${error.message}`);
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    source_id: (row.source_id as string | null) ?? null,
+    name: String(row.name),
+    role: row.role === "manager" ? "manager" : "member",
+    is_closer: Boolean(row.is_closer),
+  }));
+}
+
+export function coordinatorsOf(team: TeamMember[]): TeamMember[] {
+  return team.filter((member) => member.role === "member");
+}
+=== lib\db\queries\views.ts ===
+import { getServiceClient } from "@/lib/db/client";
+import { requireHead, scopeOwner } from "@/lib/db/guards";
+import type {
+  CashSummaryRow,
+  ChannelFunnelRow,
+  CoordSummaryRow,
+  Ctx,
+  DealDeskRow,
+  InitiativeFunnelRow,
+  NeedsUpdateRow,
+  WarmthFunnelRow,
+  WeeklyProgressRow,
+} from "@/lib/types";
+
+async function viewRows<T>(view: string, eventId: string, ownerId: string | null): Promise<T[]> {
+  const supabase = getServiceClient();
+  let query = supabase.from(view).select("*").eq("event_id", eventId);
+  if (ownerId) query = query.eq("owner_id", ownerId);
+  const { data, error } = await query;
+  if (error) throw new Error(`${view}: ${error.message}`);
+  return (data ?? []) as T[];
+}
+
+/** Companies needing an update (business days), biggest amount at risk first. */
+export async function getNeedsUpdate(ctx: Ctx, ownerId?: string | null): Promise<NeedsUpdateRow[]> {
+  const owner = scopeOwner(ctx, ownerId);
+  const rows = await viewRows<NeedsUpdateRow>("v_needs_update", ctx.eventId, owner);
+  return rows.sort(
+    (a, b) => (b.approx_amount_inr ?? 0) - (a.approx_amount_inr ?? 0) || b.idle_bdays - a.idle_bdays,
+  );
+}
+
+export async function getWeeklyProgress(ctx: Ctx, ownerId?: string | null): Promise<WeeklyProgressRow[]> {
+  return viewRows<WeeklyProgressRow>("v_weekly_progress", ctx.eventId, scopeOwner(ctx, ownerId));
+}
+
+export async function getCoordSummary(ctx: Ctx, ownerId?: string | null): Promise<CoordSummaryRow[]> {
+  return viewRows<CoordSummaryRow>("v_coord_summary", ctx.eventId, scopeOwner(ctx, ownerId));
+}
+
+export async function getCashSummary(ctx: Ctx, ownerId?: string | null): Promise<CashSummaryRow[]> {
+  return viewRows<CashSummaryRow>("v_cash_summary", ctx.eventId, scopeOwner(ctx, ownerId));
+}
+
+/** Closers see every open deal; other coordinators only their own; the head sees all. */
+export async function getDealDesk(ctx: Ctx, ownerId?: string | null): Promise<DealDeskRow[]> {
+  const owner = ctx.role === "coordinator" && ctx.isCloser ? (ownerId ?? null) : scopeOwner(ctx, ownerId);
+  const rows = await viewRows<DealDeskRow>("v_deal_desk", ctx.eventId, owner);
+  return rows.sort((a, b) => b.proposed_inr - a.proposed_inr);
+}
+
+/** Team-level views below are head only (they have no owner column). */
+export async function getChannelFunnel(ctx: Ctx): Promise<ChannelFunnelRow[]> {
+  requireHead(ctx);
+  return viewRows<ChannelFunnelRow>("v_crm_funnel_by_channel", ctx.eventId, null);
+}
+
+export async function getInitiativeFunnel(ctx: Ctx): Promise<InitiativeFunnelRow[]> {
+  requireHead(ctx);
+  return viewRows<InitiativeFunnelRow>("v_initiative_funnel", ctx.eventId, null);
+}
+
+export async function getWarmthFunnel(ctx: Ctx): Promise<WarmthFunnelRow[]> {
+  requireHead(ctx);
+  return viewRows<WarmthFunnelRow>("v_warmth_funnel", ctx.eventId, null);
+}

@@ -1,0 +1,462 @@
+===== FILE: app\api\actions\[id]\confirm\route.ts =====
+export { dynamic } from "@/lib/api/not-implemented";
+import { notImplemented } from "@/lib/api/not-implemented";
+
+export function POST() {
+  return notImplemented();
+}
+
+===== FILE: app\api\actions\[id]\reject\route.ts =====
+export { dynamic } from "@/lib/api/not-implemented";
+import { notImplemented } from "@/lib/api/not-implemented";
+
+export function POST() {
+  return notImplemented();
+}
+
+===== FILE: app\api\crm\companies\route.ts =====
+export { dynamic } from "@/lib/api/not-implemented";
+import { notImplemented } from "@/lib/api/not-implemented";
+
+export function GET() {
+  return notImplemented();
+}
+
+export function POST() {
+  return notImplemented();
+}
+
+===== FILE: app\api\crm\deals\route.ts =====
+export { dynamic } from "@/lib/api/not-implemented";
+import { notImplemented } from "@/lib/api/not-implemented";
+
+export function GET() {
+  return notImplemented();
+}
+
+export function POST() {
+  return notImplemented();
+}
+
+===== FILE: app\api\crm\followup\route.ts =====
+export { dynamic } from "@/lib/api/not-implemented";
+import { notImplemented } from "@/lib/api/not-implemented";
+
+export function GET() {
+  return notImplemented();
+}
+
+export function POST() {
+  return notImplemented();
+}
+
+===== FILE: app\api\crm\payments\route.ts =====
+export { dynamic } from "@/lib/api/not-implemented";
+import { notImplemented } from "@/lib/api/not-implemented";
+
+export function GET() {
+  return notImplemented();
+}
+
+export function POST() {
+  return notImplemented();
+}
+
+===== FILE: app\api\crm\status\route.ts =====
+export { dynamic } from "@/lib/api/not-implemented";
+import { notImplemented } from "@/lib/api/not-implemented";
+
+export function GET() {
+  return notImplemented();
+}
+
+export function POST() {
+  return notImplemented();
+}
+
+===== FILE: app\api\crm\tasks\route.ts =====
+export { dynamic } from "@/lib/api/not-implemented";
+import { notImplemented } from "@/lib/api/not-implemented";
+
+export function GET() {
+  return notImplemented();
+}
+
+export function POST() {
+  return notImplemented();
+}
+
+===== FILE: app\coordinator\page.tsx =====
+import { Header } from "@/components/shell/Header";
+import { getSession } from "@/lib/session";
+
+
+export default async function CoordinatorPage() {
+  const session = await getSession();
+  return (
+    <div className="min-h-full">
+      <Header role="coordinator" eventId={session.eventId} memberId={session.memberId} />
+      <main className="grid gap-4 p-6 lg:grid-cols-[minmax(0,4fr)_minmax(280px,1fr)]">
+        <section className="rounded-[16px] border border-border bg-card p-6">
+          <h1 className="text-lg font-semibold">Coordinator CRM</h1>
+          <p className="mt-2 text-sm text-muted">Company table, deal desk, drafts, and import land in later phases.</p>
+        </section>
+        <aside className="rounded-[16px] border border-border bg-card p-6">
+          <h2 className="text-sm font-semibold">To-do and assistant</h2>
+          <p className="mt-2 text-sm text-muted">Needs-update, tasks, and chat land in later phases.</p>
+        </aside>
+      </main>
+    </div>
+  );
+}
+
+===== FILE: app\head\page.tsx =====
+import { Header } from "@/components/shell/Header";
+import { getSession } from "@/lib/session";
+import { OverviewTab } from "./_tabs/overview";
+
+export default async function HeadPage() {
+  const session = await getSession();
+  return (
+    <div className="min-h-full">
+      <Header role="head" eventId={session.eventId} memberId={session.memberId} />
+      <main className="p-6">
+        <OverviewTab />
+      </main>
+    </div>
+  );
+}
+
+===== FILE: components\coordinator\CompanyDrawer.tsx =====
+export function CompanyDrawer() {
+  return null;
+}
+
+===== FILE: components\coordinator\CrmTable.tsx =====
+export function CrmTable() {
+  return null;
+}
+
+===== FILE: components\coordinator\DraftPanel.tsx =====
+export function DraftPanel() {
+  return null;
+}
+
+===== FILE: components\coordinator\EodDialog.tsx =====
+export function EodDialog() {
+  return null;
+}
+
+===== FILE: components\coordinator\ImportPanel.tsx =====
+export function ImportPanel() {
+  return null;
+}
+
+===== FILE: components\coordinator\TasksList.tsx =====
+export function TasksList() {
+  return null;
+}
+
+===== FILE: components\coordinator\TodoRail.tsx =====
+export function TodoRail() {
+  return null;
+}
+
+===== FILE: components\coordinator\TransitionModals.tsx =====
+export function TransitionModals() {
+  return null;
+}
+
+===== FILE: components\coordinator\WeeklyStrip.tsx =====
+export function WeeklyStrip() {
+  return null;
+}
+
+===== FILE: components\shell\EventSwitch.tsx =====
+const EVENTS = [
+  { id: "saarang-2027", label: "Saarang 2027" },
+  { id: "campusfest-2025-work", label: "CampusFest work" },
+  { id: "campusfest-2025", label: "CampusFest original" },
+] as const;
+
+export function EventSwitch(props: { eventId: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      {EVENTS.map((event) => (
+        <span
+          key={event.id}
+          className={
+            event.id === props.eventId
+              ? "rounded-full border border-accent px-3 py-1 text-accent"
+              : "rounded-full border border-border px-3 py-1 text-muted"
+          }
+        >
+          {event.label}
+        </span>
+      ))}
+      {props.eventId === "campusfest-2025" ? (
+        <span className="rounded border border-approx/40 bg-approx/10 px-2 py-1 text-xs text-approx">
+          Locked original
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+===== FILE: components\shell\Header.tsx =====
+import { EventSwitch } from "@/components/shell/EventSwitch";
+import { RoleToggle } from "@/components/shell/RoleToggle";
+import type { DemoRole } from "@/lib/session";
+
+export function Header(props: {
+  role: DemoRole;
+  eventId: string;
+  memberId: string | null;
+}) {
+  return (
+    <header className="flex min-h-11 items-center justify-between gap-4 border-b border-border px-4 py-3">
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-semibold tracking-wide text-accent">Deal Drive</span>
+        <EventSwitch eventId={props.eventId} />
+      </div>
+      <RoleToggle role={props.role} />
+    </header>
+  );
+}
+
+===== FILE: components\shell\RoleToggle.tsx =====
+"use client";
+
+import type { DemoRole } from "@/lib/session";
+
+export function RoleToggle(props: { role: DemoRole }) {
+  const isHead = props.role === "head";
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Role"
+      className="relative flex h-11 min-h-11 w-[220px] items-center rounded-full border-2 border-accent/40 bg-card p-1"
+    >
+      <span
+        aria-hidden
+        className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-full bg-accent/20 transition-transform duration-200"
+        style={{ transform: isHead ? "translateX(0)" : "translateX(100%)" }}
+      />
+      <a
+        href="/head"
+        role="radio"
+        aria-checked={isHead}
+        className={`relative z-10 flex h-full flex-1 items-center justify-center text-sm ${isHead ? "text-foreground" : "text-muted"}`}
+      >
+        Head
+      </a>
+      <a
+        href="/coordinator"
+        role="radio"
+        aria-checked={!isHead}
+        className={`relative z-10 flex h-full flex-1 items-center justify-center text-sm ${!isHead ? "text-foreground" : "text-muted"}`}
+      >
+        Coordinator
+      </a>
+    </div>
+  );
+}
+
+===== FILE: tests\smoke.test.ts =====
+import { describe, expect, it } from "vitest";
+
+describe("phase 0", () => {
+  it("runs vitest", () => {
+    expect(true).toBe(true);
+  });
+});
+
+
+===== LISTING components\ui =====
+button.tsx
+
+===== PROJECT TREE =====
+app
+components
+data
+docs
+lib
+public
+scripts
+src
+supabase
+tests
+.env.example
+.env.local
+AGENTS.md
+components.json
+eslint.config.mjs
+next-env.d.ts
+next.config.ts
+package-lock.json
+package.json
+README.md
+tsconfig.json
+vitest.config.ts
+app\api
+app\coordinator
+app\head
+app\globals.css
+app\layout.tsx
+app\page.tsx
+app\api\actions
+app\api\campusfest
+app\api\chat
+app\api\crm
+app\api\draft
+app\api\import
+app\api\reset
+app\api\actions\[id]
+app\api\actions\[id]\confirm
+app\api\actions\[id]\reject
+app\api\campusfest\reset
+app\api\campusfest\upload
+app\api\campusfest\reset\route.ts
+app\api\campusfest\upload\route.ts
+app\api\chat\route.ts
+app\api\crm\companies
+app\api\crm\deals
+app\api\crm\followup
+app\api\crm\payments
+app\api\crm\status
+app\api\crm\tasks
+app\api\crm\companies\route.ts
+app\api\crm\deals\route.ts
+app\api\crm\followup\route.ts
+app\api\crm\payments\route.ts
+app\api\crm\status\route.ts
+app\api\crm\tasks\route.ts
+app\api\draft\route.ts
+app\api\import\route.ts
+app\api\reset\saarang
+app\api\reset\saarang\route.ts
+app\coordinator\page.tsx
+app\head\_tabs
+app\head\page.tsx
+app\head\_tabs\benchmark.tsx
+app\head\_tabs\data-lab.tsx
+app\head\_tabs\deal-desk.tsx
+app\head\_tabs\eod.tsx
+app\head\_tabs\initiatives.tsx
+app\head\_tabs\inventory.tsx
+app\head\_tabs\overview.tsx
+app\head\_tabs\plan.tsx
+app\head\_tabs\risks.tsx
+app\head\_tabs\settings.tsx
+app\head\_tabs\team.tsx
+components\chat
+components\coordinator
+components\head
+components\shell
+components\ui
+components\coordinator\CompanyDrawer.tsx
+components\coordinator\CrmTable.tsx
+components\coordinator\DraftPanel.tsx
+components\coordinator\EodDialog.tsx
+components\coordinator\ImportPanel.tsx
+components\coordinator\TasksList.tsx
+components\coordinator\TodoRail.tsx
+components\coordinator\TransitionModals.tsx
+components\coordinator\WeeklyStrip.tsx
+components\head\DealDesk.tsx
+components\head\DecisionsList.tsx
+components\head\FunnelChart.tsx
+components\head\GatesChart.tsx
+components\head\InitiativeCards.tsx
+components\head\KpiCards.tsx
+components\head\LeadSupply.tsx
+components\head\ModelTable.tsx
+components\head\TeamTable.tsx
+components\shell\EventSwitch.tsx
+components\shell\Header.tsx
+components\shell\RoleToggle.tsx
+components\ui\button.tsx
+data\private
+data\Sponsor Dataset.xlsx
+docs\notes
+docs\ARCHITECTURE.md
+docs\BUILD_BRIEF.md
+docs\CONTEXT.md
+lib\ai
+lib\api
+lib\db
+lib\domain
+lib\mail
+lib\model
+lib\seed
+lib\session.ts
+lib\utils.ts
+lib\ai\context.ts
+lib\ai\draft.ts
+lib\ai\gemini.ts
+lib\ai\guards.ts
+lib\ai\ratelimit.ts
+lib\ai\tools.ts
+lib\api\not-implemented.ts
+lib\db\queries
+lib\db\client.ts
+lib\db\queries\events.ts
+lib\db\queries\index.ts
+lib\domain\bizdays.ts
+lib\domain\channels.ts
+lib\domain\decisions.ts
+lib\domain\initiatives.ts
+lib\domain\money.ts
+lib\domain\rules-engine.ts
+lib\domain\status.ts
+lib\mail\template.ts
+lib\model\attribution.ts
+lib\model\gates.ts
+lib\model\projection.ts
+lib\seed\constants
+lib\seed\campusfest.ts
+lib\seed\saarang.ts
+lib\seed\constants\sectors.ts
+public\file.svg
+public\globe.svg
+public\next.svg
+public\vercel.svg
+public\window.svg
+scripts\ps
+scripts\seed-campusfest.ts
+scripts\seed-saarang.ts
+scripts\test-chat.ts
+scripts\verify.ts
+scripts\ps\helpers.ps1
+src\app
+src\app\favicon.ico
+src\app\globals.css
+src\app\layout.tsx
+src\app\page.tsx
+supabase\cursor_backup
+supabase\migrations
+supabase\cursor_backup\001_core.sql
+supabase\cursor_backup\002_events_and_facts.sql
+supabase\cursor_backup\003_views.sql
+tests\smoke.test.ts
+
+===== GIT STATUS =====
+AA README.md
+ M app/coordinator/page.tsx
+ M app/head/page.tsx
+ M app/layout.tsx
+ M app/page.tsx
+ D supabase/migrations/001_core.sql
+ D supabase/migrations/002_events_and_facts.sql
+ D supabase/migrations/003_views.sql
+ M tsconfig.json
+?? bundle_coord_1.txt
+?? bundle_coord_2.txt
+?? bundle_coordinator.txt
+?? bundle_foundation.txt
+?? bundle_head.txt
+?? data/
+?? docs/BUILD_BRIEF.md
+?? docs/CONTEXT.md
+?? scripts/ps/
+?? supabase/cursor_backup/
