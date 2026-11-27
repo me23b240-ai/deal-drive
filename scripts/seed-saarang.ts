@@ -1,0 +1,14 @@
+import { config } from "dotenv";
+
+config({ path: ".env.local" });
+
+async function main() {
+  const { seedSaarang } = await import("../lib/seed/saarang");
+  const anchor = process.argv.find((arg) => arg.startsWith("--anchor="))?.slice(9);
+  await seedSaarang(anchor);
+}
+
+main().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+});
