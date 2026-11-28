@@ -131,7 +131,7 @@ export function PlanForm({ data, locked }: { data: SettingsData; locked: boolean
   const [v, setV] = useState<Record<string, string>>(() => {
     const out: Record<string, string> = {
       avgNewDeal: String(p.avgNewDeal), prefestShare: pct(p.prefestShare), inkindScope: p.inkindScope,
-      stretchWarmLeads: String(p.stretchWarmLeads), stretchOtherLeads: String(p.stretchOtherLeads), artistLeads: String(p.artistLeads),
+      stretchWarmLeads: String(p.stretchWarmLeads), stretchOtherLeads: String(p.stretchOtherLeads), warmNetwork: String(p.warmSplit.network), warmReferral: String(p.warmSplit.referral), baselineAvgDeal: String(p.baselineAvgDeal),
     };
     for (const sc of ["base", "stretch"] as const) {
       out[`${sc}.closeRate`] = pct(p[sc].closeRate);
@@ -152,7 +152,7 @@ export function PlanForm({ data, locked }: { data: SettingsData; locked: boolean
       section: "plan",
       plan: {
         avgNewDeal: Number(v.avgNewDeal), prefestShare: r("prefestShare"), inkindScope: v.inkindScope,
-        stretchWarmLeads: Math.round(Number(v.stretchWarmLeads)), stretchOtherLeads: Math.round(Number(v.stretchOtherLeads)), artistLeads: Math.round(Number(v.artistLeads)),
+        stretchWarmLeads: Math.round(Number(v.stretchWarmLeads)), stretchOtherLeads: Math.round(Number(v.stretchOtherLeads)), warmSplit: { network: Math.round(Number(v.warmNetwork)), referral: Math.round(Number(v.warmReferral)) }, baselineAvgDeal: Number(v.baselineAvgDeal),
         base: scen("base"), stretch: scen("stretch"),
       },
     }, "Plan assumptions saved. Plan, Overview and the chatbot now use them.");
@@ -170,9 +170,9 @@ export function PlanForm({ data, locked }: { data: SettingsData; locked: boolean
             <option value="new_only">new_only (existing keeps observed in-kind)</option>
           </select>
         </div>
-        <Field id="p-wl" label="Stretch warm leads" value={v.stretchWarmLeads ?? ""} onChange={set("stretchWarmLeads")} disabled={s.disabled} />
+        <Field id="p-wl" label="Stretch warm leads (total, incl. queue)" value={v.stretchWarmLeads ?? ""} onChange={set("stretchWarmLeads")} disabled={s.disabled} />
         <Field id="p-ol" label="Stretch other leads" value={v.stretchOtherLeads ?? ""} onChange={set("stretchOtherLeads")} disabled={s.disabled} />
-        <Field id="p-al" label="Artist-linked leads (bet-4)" value={v.artistLeads ?? ""} onChange={set("artistLeads")} disabled={s.disabled} />
+        <Field id="p-wn" label="Warm network leads (bet-2)" value={v.warmNetwork ?? ""} onChange={set("warmNetwork")} disabled={s.disabled} /><Field id="p-wr" label="Warm referral leads (bet-4)" value={v.warmReferral ?? ""} onChange={set("warmReferral")} disabled={s.disabled} /><Field id="p-bl" label="Baseline average deal (rupees)" value={v.baselineAvgDeal ?? ""} onChange={set("baselineAvgDeal")} disabled={s.disabled} />
       </div>
       {(["base", "stretch"] as const).map((sc) => (
         <fieldset key={sc} className="rounded-[16px] border border-border p-4">

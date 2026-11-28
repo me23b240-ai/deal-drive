@@ -4,7 +4,7 @@ import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/db/errors"
 import type { Ctx, DealDeskRow } from "@/lib/types";
 import { getDealDesk } from "./views";
 
-export const OPEN_DEAL_STAGES = ["prospecting", "proposal_sent", "negotiating"] as const;
+export const OPEN_DEAL_STAGES = ["prospecting", "proposal_sent", "negotiating", "mou_sent"] as const;
 export type OpenDealStage = (typeof OPEN_DEAL_STAGES)[number];
 
 /** Coordinators see their own open deals; closers see every open deal. */

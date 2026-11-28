@@ -1,9 +1,11 @@
 import { getServiceClient } from "@/lib/db/client";
 import { assertWritable } from "@/lib/db/guards";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/db/errors";
-import { addBusinessDays, addDays, toIstDate } from "@/lib/domain/bizdays";
+import { addBusinessDays } from "@/lib/domain/bizdays";
 import { validateTransition, type StatusChangeInput } from "@/lib/domain/crm-rules";
+import { paymentSplit } from "@/lib/domain/payments";
 import type { StatusCode } from "@/lib/domain/status";
+import { resolveAssumptions } from "@/lib/model/assumptions";
 import type { Ctx } from "@/lib/types";
 import { getHolidays } from "./holidays";
 import { num } from "./page";
@@ -61,11 +63,12 @@ async function logStatusActivity(ctx: Ctx, brand: BrandState, note: string | nul
   });
 }
 
+/** Payment rows follow the deal's payment_terms: 100_0 (one row), 75_25 or 50_50. Cash portion only. */
 async function createPaymentRows(ctx: Ctx, brandId: string): Promise<{ dealId: string | null; created: number }> {
   const supabase = getServiceClient();
   const { data: deals, error } = await supabase
     .from("deals")
-    .select("id, signed_cash_inr, stage_changed_at")
+    .select("id, signed_cash_inr, stage_changed_at, payment_terms")
     .eq("brand_id", brandId)
     .eq("stage", "partner_confirmed")
     .order("stage_changed_at", { ascending: false })
@@ -79,24 +82,25 @@ async function createPaymentRows(ctx: Ctx, brandId: string): Promise<{ dealId: s
   if ((count ?? 0) > 0) return { dealId, created: 0 };
   const cash = num(deal.signed_cash_inr);
   if (cash <= 0) return { dealId, created: 0 };
-  const plan = ctx.event.model_assumptions.plan;
-  const raw = plan && typeof plan === "object" ? (plan as Record<string, unknown>).prefestShare : undefined;
-  const share = typeof raw === "number" && raw > 0 && raw < 1 ? raw : 0.75;
-  const pre = Math.round(cash * share);
-  const start = ctx.event.starts_at ? toIstDate(ctx.event.starts_at) : ctx.todayIst;
-  const end = ctx.event.ends_at ? toIstDate(ctx.event.ends_at) : start;
-  const rows = [
-    { deal_id: dealId, amount_inr: pre, due_date: addDays(start, -1), phase: "pre_fest", note: "Pre-fest instalment (assumed 75%)" },
-    { deal_id: dealId, amount_inr: cash - pre, due_date: addDays(end, 15), phase: "post_fest", note: "Post-fest instalment (assumed 25%)" },
+
+  const a = resolveAssumptions(ctx.event.model_assumptions);
+  const split = paymentSplit(cash, (deal.payment_terms as string | null) ?? "75_25");
+  const prePct = Math.round(split.share * 100);
+  const rows: Record<string, unknown>[] = [
+    { deal_id: dealId, amount_inr: split.pre, due_date: a.prefest_due_date, phase: "pre_fest", note: `Pre-fest instalment (${prePct}%)` },
   ];
+  if (split.post > 0) {
+    rows.push({ deal_id: dealId, amount_inr: split.post, due_date: a.postfest_due_date, phase: "post_fest", note: `Post-fest instalment (${100 - prePct}%)` });
+  }
   const { error: iErr } = await supabase.from("payments").insert(rows);
   if (iErr) throw new Error(`payments: ${iErr.message}`);
   return { dealId, created: rows.length };
 }
 
-export async function changeCompanyStatus(ctx: Ctx, input: StatusChangeInput): Promise<{ dealId: string | null; paymentsCreated: number }> {
+export async function changeCompanyStatus(ctx: Ctx, input: StatusChangeInput, opts?: { viaMou?: boolean }): Promise<{ dealId: string | null; paymentsCreated: number }> {
   assertWritable(ctx);
   const brand = await loadOwnedBrand(ctx, input.brandId);
+  if (input.to === "converted" && !opts?.viaMou) throw new ValidationError("A company closes through its MoU: build the slab, send the MoU, then mark it signed by both sides.");
   const problem = validateTransition(brand.crm_status, input);
   if (problem) throw new ValidationError(problem);
 
@@ -127,9 +131,10 @@ export async function changeCompanyStatus(ctx: Ctx, input: StatusChangeInput): P
   const { error } = await supabase.from("brands").update(patch).eq("id", brand.id);
   if (error) throw friendly(error.message);
   await logStatusActivity(ctx, brand, input.note ?? null, input.to);
+  if (RESPONSE_STATUSES.includes(input.to)) await supabase.from("tasks").delete().eq("brand_id", brand.id).eq("source", "sequence").eq("status", "todo");
 
   if (input.to === "converted") {
-    const res = await createPaymentRows(ctx, brand.id);
+    const res = opts?.viaMou ? { dealId: null, created: 0 } : await createPaymentRows(ctx, brand.id);
     return { dealId: res.dealId, paymentsCreated: res.created };
   }
   return { dealId: null, paymentsCreated: 0 };

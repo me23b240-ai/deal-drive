@@ -1,0 +1,673 @@
+﻿=== C:\Users\poras wadhai\deal-drive\tests\assumptions.test.ts ===
+import { describe, expect, it } from "vitest";
+import { DEFAULT_ASSUMPTIONS, resolveAssumptions } from "@/lib/model/assumptions";
+
+describe("assumptions", () => {
+  it("returns defaults for empty input", () => {
+    expect(resolveAssumptions({})).toEqual(DEFAULT_ASSUMPTIONS);
+    expect(resolveAssumptions(null)).toEqual(DEFAULT_ASSUMPTIONS);
+  });
+
+  it("merges partial overrides deeply", () => {
+    const r = resolveAssumptions({ close_rate: { stretch: 0.5 }, avg_new_deal_inr: 100000 });
+    expect(r.close_rate.base).toBe(0.25);
+    expect(r.close_rate.stretch).toBe(0.5);
+    expect(r.avg_new_deal_inr).toBe(100000);
+  });
+
+  it("ignores values of the wrong type", () => {
+    const r = resolveAssumptions({ avg_new_deal_inr: "x", inkind_policy_scope: "nope" });
+    expect(r.avg_new_deal_inr).toBe(125000);
+    expect(r.inkind_policy_scope).toBe("all");
+  });
+});
+=== C:\Users\poras wadhai\deal-drive\tests\bizdays.test.ts ===
+import { describe, expect, it } from "vitest";
+import {
+  addBusinessDays,
+  businessDaysBetween,
+  businessDaysLeftInWeek,
+  isBusinessDay,
+  isoDow,
+  toIstDate,
+  weekEndIST,
+  weekStartIST,
+} from "@/lib/domain/bizdays";
+
+const H = [{ day: "2026-12-25" }, { day: "2027-01-01" }];
+
+describe("bizdays", () => {
+  it("knows the weekday of known dates", () => {
+    expect(isoDow("2026-11-27")).toBe(5);
+    expect(isoDow("2026-11-28")).toBe(6);
+    expect(isoDow("2026-11-29")).toBe(7);
+    expect(isoDow("2026-11-30")).toBe(1);
+  });
+
+  it("flags business days", () => {
+    expect(isBusinessDay("2026-11-27", H)).toBe(true);
+    expect(isBusinessDay("2026-11-28", H)).toBe(false);
+    expect(isBusinessDay("2026-12-25", H)).toBe(false);
+  });
+
+  it("counts 25 business days from 27 Nov to 5 Jan with two holidays", () => {
+    expect(businessDaysBetween("2026-11-27", "2027-01-05", H)).toBe(25);
+    expect(businessDaysBetween("2026-11-27", "2027-01-05", [])).toBe(27);
+  });
+
+  it("returns 0 for same day or reversed range", () => {
+    expect(businessDaysBetween("2026-11-27", "2026-11-27", H)).toBe(0);
+    expect(businessDaysBetween("2026-11-30", "2026-11-27", H)).toBe(0);
+  });
+
+  it("adds business days skipping weekends and holidays", () => {
+    expect(addBusinessDays("2026-11-27", 1, H)).toBe("2026-11-30");
+    expect(addBusinessDays("2026-12-24", 1, H)).toBe("2026-12-28");
+    expect(addBusinessDays("2026-11-27", 0, H)).toBe("2026-11-27");
+    expect(addBusinessDays("2026-11-30", 5, H)).toBe("2026-12-07");
+  });
+
+  it("computes the Monday to Sunday week", () => {
+    expect(weekStartIST("2026-11-27")).toBe("2026-11-23");
+    expect(weekEndIST("2026-11-27")).toBe("2026-11-29");
+    expect(weekStartIST("2026-11-30")).toBe("2026-11-30");
+    expect(weekStartIST("2026-11-29")).toBe("2026-11-23");
+  });
+
+  it("counts business days left in the week including today", () => {
+    expect(businessDaysLeftInWeek("2026-11-23", H)).toBe(5);
+    expect(businessDaysLeftInWeek("2026-11-27", H)).toBe(1);
+    expect(businessDaysLeftInWeek("2026-11-28", H)).toBe(0);
+  });
+
+  it("converts timestamps to IST dates", () => {
+    expect(toIstDate("2026-11-26T20:00:00Z")).toBe("2026-11-27");
+    expect(toIstDate("2027-01-05")).toBe("2027-01-05");
+  });
+});
+=== C:\Users\poras wadhai\deal-drive\tests\campusfest-parse.test.ts ===
+import { existsSync } from "node:fs";
+import { beforeAll, describe, expect, it } from "vitest";
+import { computeAnchors, parseCampusFest, type Parsed } from "@/lib/seed/campusfest-parse";
+
+const FILE = "data/Sponsor_Dataset.xlsx";
+
+describe.skipIf(!existsSync(FILE))("campusfest parse (needs the xlsx, no database)", () => {
+  let p: Parsed;
+  beforeAll(async () => {
+    p = await parseCampusFest(FILE);
+  });
+
+  it("removes the known import retries", () => {
+    expect(p.removed).toEqual({ interactions: 3, qualification: 1, history: 2 });
+  });
+
+  it("reads IST wall-clock times", () => {
+    expect(p.asOf).toBe("2025-04-20T23:59:59+05:30");
+    expect(String(p.brands[0].created_at)).toMatch(/\+05:30$/);
+  });
+
+  it("matches the dataset anchors", () => {
+    const a = computeAnchors(p);
+    expect(a.brands).toBe(180);
+    expect(a.contacts).toBe(270);
+    expect(a.campaigns).toBe(6);
+    expect(a.opportunities).toBe(58);
+    expect(a.confirmed).toBe(24);
+    expect(a.confirmedValue).toBe(2_240_000);
+    expect(a.cashValue).toBe(2_000_000);
+    expect(a.inKindValue).toBe(240_000);
+    expect(a.qualifiedBrands).toBe(60);
+    expect(a.optOuts).toBe(7);
+    expect(a.nonWarm.signed).toBe(0);
+  });
+});
+=== C:\Users\poras wadhai\deal-drive\tests\crm-rules.test.ts ===
+import { describe, expect, it } from "vitest";
+import { isLegalTransition, legalNextStatuses, validateTransition } from "@/lib/domain/crm-rules";
+
+describe("crm status rules", () => {
+  it("only allows Didn't Pick from To Contact or Send Mail", () => {
+    expect(isLegalTransition("to_contact", "didnt_pick")).toBe(true);
+    expect(isLegalTransition("send_mail", "didnt_pick")).toBe(true);
+    expect(isLegalTransition("contacted", "didnt_pick")).toBe(false);
+  });
+  it("only allows Ghosting from Contacted or Prospective", () => {
+    expect(isLegalTransition("contacted", "ghosting")).toBe(true);
+    expect(isLegalTransition("prospective", "ghosting")).toBe(true);
+    expect(isLegalTransition("didnt_pick", "ghosting")).toBe(false);
+  });
+  it("treats final statuses as closed", () => {
+    expect(legalNextStatuses("converted")).toEqual([]);
+    expect(legalNextStatuses("rejected")).toEqual([]);
+  });
+  it("hides Slabs sent and To Contact from the dropdown", () => {
+    const next = legalNextStatuses("to_contact");
+    expect(next).not.toContain("slabs_sent");
+    expect(next).not.toContain("to_contact");
+    expect(next).toContain("send_mail");
+  });
+  it("asks for the right fields", () => {
+    expect(validateTransition("contacted", { brandId: "b", to: "prospective" })).toContain("amount");
+    expect(validateTransition("contacted", { brandId: "b", to: "prospective", approxAmountInr: 100_000 })).toBeNull();
+    expect(validateTransition("prospective", { brandId: "b", to: "converted", finalAmountInr: 500_000, inKindInr: 600_000 })).toContain("In-kind");
+    expect(validateTransition("prospective", { brandId: "b", to: "converted", finalAmountInr: 500_000, inKindInr: 50_000 })).toBeNull();
+    expect(validateTransition("contacted", { brandId: "b", to: "rejected" })).toContain("reason");
+    expect(validateTransition("contacted", { brandId: "b", to: "didnt_pick" })).toContain("Didn't Pick");
+  });
+});
+=== C:\Users\poras wadhai\deal-drive\tests\derive.test.ts ===
+import { describe, expect, it } from "vitest";
+import {
+  buildKpis,
+  buildPlanState,
+  cashTermsMetrics,
+  coordinatorStat,
+  dealDeskMetrics,
+  experimentArms,
+  laneMetrics,
+  leadSupply,
+  ownershipConflicts,
+  staleProspects,
+  type BrandRow,
+} from "@/lib/model/derive";
+import { DEFAULT_SETTINGS, projectPlan } from "@/lib/model/projection";
+
+const brand = (i: number, p: Partial<BrandRow>): BrandRow => ({
+  id: `b${i}`, name: `Co ${i}`, owner_id: "o1", crm_status: "contacted", source_channel: "cold_database",
+  approx_amount_inr: 0, first_outreach_at: null, last_touch_at: null, next_follow_up: null, initiative_id: null, ...p,
+});
+
+function seedLike(): BrandRow[] {
+  const out: BrandRow[] = [];
+  let i = 0;
+  for (let k = 0; k < 25; k++) out.push(brand(i++, { crm_status: k % 5 === 0 ? "send_mail" : "to_contact", source_channel: "past_sponsors" }));
+  for (let k = 0; k < 42; k++) out.push(brand(i++, { crm_status: "to_contact", source_channel: "cold_database" }));
+  for (let k = 0; k < 14; k++) out.push(brand(i++, { crm_status: "prospective", source_channel: "other_fest", approx_amount_inr: k === 0 ? 3_075_000 - 13 * 100_000 : 100_000 }));
+  return out;
+}
+const signed = [
+  { dealId: "d1", brandId: "x1", amountInr: 700_000, cashInr: 640_000, inKindInr: 60_000, confirmedOn: "2026-11-15" },
+  { dealId: "d2", brandId: "x2", amountInr: 300_000, cashInr: 250_000, inKindInr: 50_000, confirmedOn: "2026-11-20" },
+  { dealId: "d3", brandId: "x3", amountInr: 100_000, cashInr: 100_000, inKindInr: 0, confirmedOn: "2026-11-22" },
+];
+
+describe("plan state from rows", () => {
+  const st = buildPlanState(seedLike(), signed);
+  it("reads open prospects, queue split and observed in-kind", () => {
+    expect(st.openProspectInr).toBe(3_075_000);
+    expect(st.openProspectCount).toBe(14);
+    expect(st.queueWarm).toBe(25);
+    expect(st.queueOther).toBe(42);
+    expect(st.signedToDate).toBe(1_100_000);
+    expect(st.signedDealsToDate).toBe(3);
+    expect(st.observedInkindShare).toBeCloseTo(0.1, 9);
+  });
+  it("feeds the model to the slide numbers", () => {
+    const p = projectPlan({ ...st, signedDealsToDate: 4 });
+    expect(p.floor).toBe(742_500);
+    expect(p.base.cashBeforeFest).toBe(1_490_063);
+    expect(p.stretch.cashBeforeFest).toBe(2_833_078);
+  });
+  it("has a 60 warm lead gap to stretch", () => {
+    const s = leadSupply(seedLike(), DEFAULT_SETTINGS);
+    expect(s.warmPool).toBe(25);
+    expect(s.gapToStretch).toBe(60);
+    expect(s.gapToBase).toBe(0);
+    expect(s.perBet[0]?.need).toBe(55);
+    expect(s.perBet[1]?.need).toBe(30);
+  });
+  it("counts warm companies outreached since the plan start", () => {
+    const rows = [...seedLike(), brand(999, { crm_status: "contacted", source_channel: "other_fest", first_outreach_at: "2026-12-02T05:00:00Z" }), brand(998, { crm_status: "contacted", source_channel: "other_fest", first_outreach_at: "2026-11-10T05:00:00Z" })];
+    expect(leadSupply(rows, DEFAULT_SETTINGS).warmPool).toBe(26);
+  });
+});
+
+describe("kpis and funnel", () => {
+  const k = buildKpis([
+    { companies: 100, outreached: 70, responded: 40, prospective_or_better: 10, converted: 4 },
+    { companies: 120, outreached: 83, responded: 64, prospective_or_better: 8, converted: 0 },
+  ]);
+  it("sums warm and other and finds the bottleneck", () => {
+    expect(k.companies).toBe(220);
+    expect(k.outreached).toBe(153);
+    expect(k.responded).toBe(104);
+    expect(k.funnel[1]?.rateFromPrev).toBeCloseTo(104 / 153, 9);
+    expect(k.bottleneck).toBe("prospective_or_better");
+  });
+});
+
+describe("initiative metrics", () => {
+  it("lane rates and counts", () => {
+    const m = laneMetrics({ outreached: 24, responded: 14, prospective_or_better: 6, converted: 2 }, 20261127);
+    expect(m.metrics.response_rate).toBeCloseTo(14 / 24, 9);
+    expect(m.metrics.proposal_rate).toBeCloseTo(6 / 14, 9);
+    expect(m.counts.response_rate).toBe("14 of 24 responded");
+    expect(laneMetrics(undefined, 1).metrics.response_rate).toBeUndefined();
+  });
+  it("deal desk metrics use the top 5 by amount", () => {
+    const rows = [
+      { company: "Northwind", stage: "proposal_sent", proposed_inr: 500_000, idle_bdays: 8, nudges: 1 },
+      { company: "Veridian", stage: "negotiating", proposed_inr: 400_000, idle_bdays: 1, nudges: 0 },
+      { company: "Skyline", stage: "negotiating", proposed_inr: 350_000, idle_bdays: 2, nudges: 0 },
+      { company: "Tiny", stage: "prospecting", proposed_inr: 10_000, idle_bdays: 15, nudges: 4 },
+    ];
+    const m = dealDeskMetrics(rows, 20261127);
+    expect(m.metrics.top5_max_idle_bdays).toBe(15);
+    expect(m.metrics.negotiating_count).toBe(2);
+    expect(m.metrics.deals_idle_gt10_after_3_nudges).toBe(1);
+    const only3 = dealDeskMetrics(rows.slice(0, 3), 20261127);
+    expect(only3.metrics.top5_max_idle_bdays).toBe(8);
+  });
+  it("cash-first terms looks only at deals confirmed since the plan start", () => {
+    expect(cashTermsMetrics(signed, "2026-11-30", 20261127).metrics.inkind_share_new).toBeUndefined();
+    const m = cashTermsMetrics([...signed, { dealId: "d4", brandId: "x4", amountInr: 200_000, cashInr: 180_000, inKindInr: 20_000, confirmedOn: "2026-12-03" }], "2026-11-30", 20261204);
+    expect(m.metrics.inkind_share_new).toBeCloseTo(0.1, 9);
+  });
+  it("experiment ratio is undefined when the template arm has no proposals", () => {
+    const ids = new Set(["a", "b", "c", "d"]);
+    const drafts = [
+      { brand_id: "a", personalised: true, status: "sent" }, { brand_id: "b", personalised: true, status: "sent" },
+      { brand_id: "c", personalised: false, status: "sent" }, { brand_id: "d", personalised: false, status: "draft" },
+    ];
+    const none = experimentArms(ids, drafts, [{ brand_id: "a", to_status: "prospective" }]);
+    expect(none.personalised).toEqual({ n: 2, reached: 1, rate: 0.5 });
+    expect(none.template.n).toBe(1);
+    expect(none.ratio).toBeUndefined();
+    expect(none.directionalOnly).toBe(true);
+    const some = experimentArms(ids, drafts, [{ brand_id: "a", to_status: "prospective" }, { brand_id: "c", to_status: "converted" }]);
+    expect(some.ratio).toBeCloseTo(0.5, 9);
+  });
+});
+
+describe("decision inputs", () => {
+  const names = new Map([["o1", "Aarav"], ["o2", "Kavya"]]);
+  it("finds ownership conflicts ignoring demo tags and punctuation", () => {
+    const rows = [brand(1, { name: "Acme Pvt. Ltd. (demo)", owner_id: "o1" }), brand(2, { name: "ACME", owner_id: "o2" }), brand(3, { name: "Solo", owner_id: "o1" })];
+    const c = ownershipConflicts(rows, names);
+    expect(c.length).toBe(1);
+    expect(c[0]?.ownerNames.sort()).toEqual(["Aarav", "Kavya"]);
+  });
+  it("flags stale prospects past the threshold and honours snoozes", () => {
+    const rows = [
+      brand(1, { crm_status: "prospective", approx_amount_inr: 500_000, last_touch_at: "2026-11-17T05:00:00Z" }),
+      brand(2, { crm_status: "prospective", approx_amount_inr: 100_000, last_touch_at: "2026-11-26T05:00:00Z" }),
+      brand(3, { crm_status: "prospective", approx_amount_inr: 200_000, last_touch_at: "2026-11-10T05:00:00Z", next_follow_up: "2026-12-01" }),
+    ];
+    const s = staleProspects(rows, 3, "2026-11-27", [], names);
+    expect(s.length).toBe(1);
+    expect(s[0]?.amountInr).toBe(500_000);
+    expect(s[0]?.idleBdays).toBe(8);
+  });
+  it("coordinator stats count active, ghosting and elapsed days", () => {
+    const rows = [
+      brand(1, { crm_status: "contacted", last_touch_at: "2026-11-23T05:00:00Z" }),
+      brand(2, { crm_status: "ghosting", last_touch_at: "2026-11-20T05:00:00Z" }),
+      brand(3, { crm_status: "to_contact", owner_id: "o2" }),
+    ];
+    const s = coordinatorStat({ id: "o1", name: "Aarav" }, rows, { outreached: 6, target: 10 }, "2026-11-27", [], { inWeek: 5, left: 1 });
+    expect(s.activeCount).toBe(1);
+    expect(s.ghosting).toBe(1);
+    expect(s.engagedPool).toBe(2);
+    expect(s.idleBdays).toBe(4);
+    expect(s.bdaysElapsed).toBe(5);
+    const weekend = coordinatorStat({ id: "o1", name: "A" }, rows, { outreached: 0, target: 10 }, "2026-11-28", [], { inWeek: 5, left: 0 });
+    expect(weekend.bdaysElapsed).toBe(5);
+    const monday = coordinatorStat({ id: "o1", name: "A" }, rows, { outreached: 0, target: 10 }, "2026-11-30", [], { inWeek: 5, left: 5 });
+    expect(monday.bdaysElapsed).toBe(1);
+  });
+});
+=== C:\Users\poras wadhai\deal-drive\tests\mail.test.ts ===
+import { describe, expect, it } from "vitest";
+import { validateOpening, wordCount } from "@/lib/ai/guards";
+import { nextStep, stepAccess } from "@/lib/mail/steps";
+import { buildEmail, genericOpening, type SequenceStep } from "@/lib/mail/template";
+
+const sent = (...s: SequenceStep[]) => new Set<SequenceStep>(s);
+
+describe("mail steps", () => {
+  it("offers the first mail to a fresh company", () => {
+    expect(nextStep("to_contact", sent())).toBe("initial");
+  });
+  it("unlocks follow-ups in order", () => {
+    expect(nextStep("slabs_sent", sent("initial"))).toBe("follow_up_1");
+    expect(nextStep("slabs_sent", sent("initial", "follow_up_1"))).toBe("follow_up_2");
+    expect(nextStep("slabs_sent", sent("initial", "follow_up_1", "follow_up_2"))).toBeNull();
+  });
+  it("blocks follow-up 2 until follow-up 1 is sent", () => {
+    const a = stepAccess("slabs_sent", sent("initial"));
+    expect(a.follow_up_2.enabled).toBe(false);
+    expect(a.follow_up_2.reason).toContain("follow-up 1");
+  });
+  it("closes everything for a converted company", () => {
+    expect(nextStep("converted", sent("initial"))).toBeNull();
+  });
+});
+
+describe("mail template", () => {
+  it("builds subject, text and html with the opening and sender", () => {
+    const m = buildEmail({ step: "initial", eventName: "Saarang", senderName: "Asha", company: "Acme", contactName: "Ravi", opening: "Hello opening." });
+    expect(m.subject).toContain("Acme");
+    expect(m.text).toContain("Dear Ravi,");
+    expect(m.text).toContain("Hello opening.");
+    expect(m.text).toContain("Asha");
+    expect(m.html).toContain("<p>");
+  });
+  it("escapes html in the opening", () => {
+    const m = buildEmail({ step: "initial", eventName: "E", senderName: "S", company: "C", contactName: null, opening: "a <b> & c" });
+    expect(m.html).toContain("a &lt;b&gt; &amp; c");
+    expect(m.text).toContain("Hello,");
+  });
+  it("uses different wording for each step", () => {
+    expect(genericOpening("follow_up_1", "E", "C")).toContain("follow up");
+    expect(genericOpening("follow_up_2", "E", "C")).toContain("last note");
+  });
+});
+
+describe("ai guards", () => {
+  const facts = [{ id: "f1", fact: "Last year the fest drew 50000 visitors." }];
+  it("accepts a clean opening that cites a known fact", () => {
+    const r = validateOpening("We loved your campaign and think it fits our audience.", ["f1"], facts);
+    expect(r.ok).toBe(true);
+  });
+  it("rejects numbers that are not in the facts", () => {
+    const r = validateOpening("Our fest reaches 99999 people.", [], facts);
+    expect(r.ok).toBe(false);
+  });
+  it("allows numbers that appear in the facts", () => {
+    expect(validateOpening("The fest drew 50000 visitors.", ["f1"], facts).ok).toBe(true);
+  });
+  it("rejects unknown fact ids, long text, links and multiple paragraphs", () => {
+    expect(validateOpening("Fine.", ["zzz"], facts).ok).toBe(false);
+    expect(validateOpening(Array(95).fill("word").join(" "), [], facts).ok).toBe(false);
+    expect(validateOpening("See https://example.com", [], facts).ok).toBe(false);
+    expect(validateOpening("One.\n\nTwo.", [], facts).ok).toBe(false);
+    expect(wordCount("a b c")).toBe(3);
+  });
+});
+=== C:\Users\poras wadhai\deal-drive\tests\model.test.ts ===
+import { describe, expect, it } from "vitest";
+import { attributeStretch } from "@/lib/model/attribution";
+import { DEFAULT_GATES, closingOnlyPhase, gateStatuses, missedBaseGate, paceLine, signedAsOf } from "@/lib/model/gates";
+import { mergeSettings, projectPlan, type PlanState } from "@/lib/model/projection";
+
+const S: PlanState = {
+  signedToDate: 1_100_000, signedDealsToDate: 4, openProspectInr: 3_075_000, openProspectCount: 14,
+  queueWarm: 25, queueOther: 42, observedInkindShare: 0.1,
+};
+
+describe("projection (seeded state)", () => {
+  const r = projectPlan(S);
+  it("floor cash", () => expect(r.floor).toBe(742_500));
+  it("base", () => {
+    expect(r.base.signed).toBe(2_207_500);
+    expect(r.base.cashBeforeFest).toBe(1_490_063);
+    expect(r.base.totalDeals).toBeCloseTo(10.21, 6);
+  });
+  it("stretch", () => {
+    expect(r.stretch.signed).toBe(3_976_250);
+    expect(r.stretch.cashBeforeFest).toBe(2_833_078);
+  });
+  it("stretch with new_only in-kind policy", () => {
+    const n = projectPlan(S, mergeSettings({ inkindScope: "new_only" }));
+    expect(n.stretch.cashBeforeFest).toBe(NEW_ONLY);
+    expect(n.stretch.cashBeforeFest).toBeLessThan(r.stretch.cashBeforeFest);
+    expect(n.base.cashBeforeFest).toBe(r.base.cashBeforeFest);
+  });
+  it("base with close rate 0.30", () => {
+    const x = projectPlan(S, mergeSettings({ base: { closeRate: 0.3 } }));
+    expect(x.base.signed).toBe(2_361_250);
+    expect(x.base.cashBeforeFest).toBe(1_593_844);
+  });
+  it("stretch with 1L average deal", () => {
+    const x = projectPlan(S, mergeSettings({ avgNewDeal: 100_000 }));
+    expect(x.stretch.signed).toBe(3_647_000);
+    expect(x.stretch.cashBeforeFest).toBe(2_598_488);
+  });
+});
+
+describe("attribution over the floor", () => {
+  const a = attributeStretch(S);
+  it("matches the slide", () => {
+    const by = Object.fromEntries(a.rows.map((x) => [x.bet, x.cashOverFloor]));
+    expect(by["bet-1"]).toBe(830_250);
+    expect(by["bet-2"]).toBe(149_109);
+    expect(by["bet-3"]).toBe(696_094);
+    expect(by["bet-4"]).toBe(379_688);
+    expect(by["bet-5"]).toBe(35_438);
+  });
+  it("sums to stretch minus floor", () => {
+    expect(Math.abs(a.sumOverFloor - 2_090_578)).toBeLessThanOrEqual(1000);
+    expect(a.reconciles).toBe(true);
+  });
+  it("reconciles under new_only too", () => {
+    expect(attributeStretch(S, mergeSettings({ inkindScope: "new_only" })).reconciles).toBe(true);
+  });
+});
+
+describe("gates", () => {
+  const deals = [
+    { confirmedOn: "2026-11-20", amountInr: 700_000 },
+    { confirmedOn: "2026-12-03", amountInr: 700_000 },
+  ];
+  it("signedAsOf is inclusive by date", () => {
+    expect(signedAsOf(deals, "2026-12-03")).toBe(1_400_000);
+    expect(signedAsOf(deals, "2026-12-02")).toBe(700_000);
+  });
+  it("all gates upcoming before 7 Dec", () => {
+    expect(gateStatuses(DEFAULT_GATES, deals, "2026-11-30").every((g) => g.status === "UPCOMING")).toBe(true);
+  });
+  it("marks on track and behind base", () => {
+    const s = gateStatuses(DEFAULT_GATES, deals, "2026-12-15");
+    expect(s[0]?.status).toBe("ON TRACK");
+    expect(s[1]?.status).toBe("BEHIND BASE");
+    expect(s[1]?.gapToBase).toBe(200_000);
+    expect(s[2]?.status).toBe("UPCOMING");
+    expect(missedBaseGate(s)?.gateOn).toBe("2026-12-14");
+  });
+  it("closing-only phase starts after 21 Dec", () => {
+    expect(closingOnlyPhase(DEFAULT_GATES, "2026-12-21")).toBe(false);
+    expect(closingOnlyPhase(DEFAULT_GATES, "2026-12-22")).toBe(true);
+  });
+  it("pace line anchors at today then gates then end", () => {
+    const p = paceLine(DEFAULT_GATES, "2026-12-10", 1_400_000, "2027-01-05", 2_207_500, 3_976_250);
+    expect(p.map((x) => x.date)).toEqual(["2026-12-10", "2026-12-14", "2026-12-21", "2027-01-05"]);
+    expect(p[0]).toEqual({ date: "2026-12-10", base: 1_400_000, stretch: 1_400_000 });
+  });
+});
+
+const NEW_ONLY = 2_791_828;
+=== C:\Users\poras wadhai\deal-drive\tests\money.test.ts ===
+import { describe, expect, it } from "vitest";
+import { formatInr, formatLakh, parseInr } from "@/lib/domain/money";
+
+const R = "\u20B9";
+
+describe("money", () => {
+  it("groups in the Indian system", () => {
+    expect(formatInr(3700000)).toBe(`${R}37,00,000`);
+    expect(formatInr(742500)).toBe(`${R}7,42,500`);
+    expect(formatInr(950)).toBe(`${R}950`);
+    expect(formatInr(-1500)).toBe(`-${R}1,500`);
+    expect(formatInr(null)).toBe("-");
+  });
+
+  it("formats lakh", () => {
+    expect(formatLakh(2207500)).toBe(`${R}22.1L`);
+    expect(formatLakh(1490063)).toBe(`${R}14.9L`);
+  });
+
+  it("parses input", () => {
+    expect(parseInr(`${R}1,25,000`)).toBe(125000);
+    expect(parseInr("2.5L")).toBe(250000);
+    expect(parseInr("abc")).toBeNull();
+  });
+});
+=== C:\Users\poras wadhai\deal-drive\tests\rules.test.ts ===
+import { describe, expect, it } from "vitest";
+import { buildDecisions, type DecisionSnapshot } from "@/lib/domain/decisions";
+import { evaluateInitiative, type InitiativeRules } from "@/lib/domain/initiatives";
+import { dateNum, evalRule, validateRuleJson } from "@/lib/domain/rules-engine";
+
+const R = (all: { m: string; op: ">=" | "<=" | ">" | "<" | "="; v: number }[]) => ({ all });
+
+const BET3: InitiativeRules = {
+  scale: R([{ m: "outreached", op: ">=", v: 20 }, { m: "response_rate", op: ">=", v: 0.5 }, { m: "proposal_rate", op: ">=", v: 0.4 }]),
+  change: R([{ m: "outreached", op: ">=", v: 20 }, { m: "response_rate", op: ">=", v: 0.3 }, { m: "response_rate", op: "<", v: 0.5 }]),
+  stop: R([{ m: "outreached", op: ">=", v: 30 }, { m: "response_rate", op: "<", v: 0.2 }]),
+};
+const BET5: InitiativeRules = {
+  scale: R([{ m: "prospective_or_better", op: ">=", v: 5 }, { m: "personalised_vs_template_ratio", op: ">=", v: 2 }]),
+  change: null,
+  stop: R([{ m: "outreached", op: ">=", v: 40 }, { m: "proposal_rate", op: "<", v: 0.05 }, { m: "signed_deals", op: "<=", v: 0 }]),
+};
+const BET1: InitiativeRules = {
+  scale: R([{ m: "negotiating_count", op: ">=", v: 5 }, { m: "today", op: "<=", v: 20261211 }]),
+  change: R([{ m: "top5_max_idle_bdays", op: ">", v: 3 }]),
+  stop: R([{ m: "deals_idle_gt10_after_3_nudges", op: ">=", v: 1 }]),
+};
+const BET2: InitiativeRules = {
+  scale: null,
+  change: R([{ m: "inkind_share_new", op: ">", v: 0.1 }]),
+  stop: R([{ m: "today", op: ">=", v: 20270104 }]),
+};
+
+describe("rules engine", () => {
+  it("evaluates and treats missing metrics as unknown", () => {
+    expect(evalRule(R([{ m: "outreached", op: ">=", v: 20 }]), { outreached: 20 }).met).toBe(true);
+    expect(evalRule(R([{ m: "outreached", op: ">=", v: 20 }]), {}).met).toBeNull();
+    expect(evalRule(R([{ m: "outreached", op: ">=", v: 20 }, { m: "x", op: "<", v: 1 }]), { outreached: 5 }).met).toBe(false);
+    expect(evalRule(null, { outreached: 5 }).met).toBe(false);
+  });
+  it("validates rule json", () => {
+    expect(validateRuleJson(null)).toEqual([]);
+    expect(validateRuleJson(R([{ m: "outreached", op: ">=", v: 1 }]))).toEqual([]);
+    expect(validateRuleJson(R([{ m: "nope", op: ">=", v: 1 }])).length).toBe(1);
+    expect(validateRuleJson({ all: [] }).length).toBe(1);
+    expect(validateRuleJson("x").length).toBe(1);
+  });
+});
+
+describe("initiative badges", () => {
+  it("bet-3 scale, change, stop, hold, too early", () => {
+    expect(evaluateInitiative("bet-3", BET3, { outreached: 24, response_rate: 0.58, proposal_rate: 0.45 }).badge).toBe("SCALE");
+    expect(evaluateInitiative("bet-3", BET3, { outreached: 24, response_rate: 0.4, proposal_rate: 0.2 }).badge).toBe("CHANGE");
+    expect(evaluateInitiative("bet-3", BET3, { outreached: 34, response_rate: 0.15, proposal_rate: 0 }).badge).toBe("STOP");
+    expect(evaluateInitiative("bet-3", BET3, { outreached: 24, response_rate: 0.55, proposal_rate: 0.2 }).badge).toBe("HOLD");
+    expect(evaluateInitiative("bet-3", BET3, { outreached: 8, response_rate: 0.5, proposal_rate: 0.5 }).badge).toBe("TOO EARLY");
+  });
+  it("reason sentences carry raw counts when given", () => {
+    const r = evaluateInitiative("bet-3", BET3, { outreached: 24, response_rate: 0.58 }, { outreached: "24 outreached", response_rate: "14 of 24 responded" });
+    expect(r.reason).toContain("14 of 24 responded");
+  });
+  it("bet-5 reports insufficient data when the template arm is empty", () => {
+    const r = evaluateInitiative("bet-5", BET5, { outreached: 45, proposal_rate: 0.1, prospective_or_better: 6, signed_deals: 0, personalised_vs_template_ratio: undefined });
+    expect(r.badge).toBe("HOLD");
+    expect(r.reason).toContain("Insufficient data");
+  });
+  it("bet-5 stops on a cold lane with no proposals", () => {
+    expect(evaluateInitiative("bet-5", BET5, { outreached: 42, proposal_rate: 0.02, signed_deals: 0 }).badge).toBe("STOP");
+  });
+  it("bet-1 scale, behind, change, stop", () => {
+    const t = dateNum("2026-12-08");
+    expect(evaluateInitiative("bet-1", BET1, { negotiating_count: 5, today: t, top5_max_idle_bdays: 1 }).badge).toBe("SCALE");
+    expect(evaluateInitiative("bet-1", BET1, { negotiating_count: 3, today: dateNum("2026-12-12"), top5_max_idle_bdays: 1 }).badge).toBe("BEHIND");
+    expect(evaluateInitiative("bet-1", BET1, { negotiating_count: 3, today: t, top5_max_idle_bdays: 8 }).badge).toBe("CHANGE");
+    expect(evaluateInitiative("bet-1", BET1, { negotiating_count: 3, today: t, top5_max_idle_bdays: 1, deals_idle_gt10_after_3_nudges: 1 }).badge).toBe("STOP");
+  });
+  it("bet-2 changes on in-kind creep and stops on the date rule", () => {
+    expect(evaluateInitiative("bet-2", BET2, { inkind_share_new: 0.14, today: dateNum("2026-12-20") }).badge).toBe("CHANGE");
+    expect(evaluateInitiative("bet-2", BET2, { inkind_share_new: 0.05, today: dateNum("2027-01-04") }).badge).toBe("STOP");
+    expect(evaluateInitiative("bet-2", BET2, { inkind_share_new: 0.05, today: dateNum("2026-12-20") }).badge).toBe("HOLD");
+  });
+});
+
+describe("decisions", () => {
+  const snap: DecisionSnapshot = {
+    initiatives: [{ code: "bet-5", name: "Capped cold test", badge: "STOP", reason: "Stop rule met: 42 outreached." }, { code: "bet-3", name: "Warm renewals", badge: "HOLD", reason: "x" }],
+    coordinators: [
+      { id: "ishita", name: "Ishita Rao", activeCount: 12, idleBdays: 4, outreachedThisWeek: 0, weeklyTarget: 10, bdaysElapsed: 5, bdaysInWeek: 5, ghosting: 1, engagedPool: 10 },
+      { id: "rohan", name: "Rohan Mehta", activeCount: 9, idleBdays: 1, outreachedThisWeek: 6, weeklyTarget: 10, bdaysElapsed: 5, bdaysInWeek: 5, ghosting: 8, engagedPool: 20 },
+    ],
+    staleProspects: [{ brandId: "b1", company: "Northwind Motors (demo)", ownerId: "arjun", ownerName: "Arjun", amountInr: 500_000, idleBdays: 8, thresholdBdays: 3 }],
+    overduePayments: [],
+    ownershipConflicts: [{ company: "Acme", ownerIds: ["a", "b"], ownerNames: ["A", "B"] }],
+    gates: [{ gateOn: "2026-12-07", baseInr: 1_320_000, stretchInr: 1_680_000, actualInr: 1_100_000, status: "BEHIND BASE", beatsStretch: false, gapToBase: 220_000 }],
+  };
+  const d = buildDecisions(snap);
+  const ids = d.map((x) => x.id);
+  it("raises the expected decisions", () => {
+    expect(ids).toContain("initiative-bet-5");
+    expect(ids).not.toContain("initiative-bet-3");
+    expect(ids).toContain("idle-ishita");
+    expect(ids).toContain("pace-ishita");
+    expect(ids).not.toContain("pace-rohan");
+    expect(ids).toContain("ghost-rohan");
+    expect(ids).not.toContain("ghost-ishita");
+    expect(ids).toContain("stale-prospects");
+    expect(ids).toContain("conflict-acme");
+    expect(ids).toContain("replan-gates");
+  });
+  it("includes the 5,00,000 deal in the stale evidence and creates tasks", () => {
+    const s = d.find((x) => x.id === "stale-prospects");
+    expect(s?.evidence).toContain("5,00,000");
+    expect(s?.tasksToCreate[0]?.ownerId).toBe("arjun");
+  });
+  it("sorts high severity first", () => {
+    expect(d[0]?.severity).toBe("high");
+    expect(d.at(-1)?.severity).toBe("low");
+  });
+});
+=== C:\Users\poras wadhai\deal-drive\tests\saarang-plan.test.ts ===
+import { describe, expect, it } from "vitest";
+import { CHANNELS, WARM_CHANNELS } from "@/lib/domain/channels";
+import { STATUS_CODES } from "@/lib/domain/status";
+import { CONVERTED, MATRIX, PROSPECTS } from "@/lib/seed/constants/saarang-plan";
+
+const statusTotal = (s: (typeof STATUS_CODES)[number]) => CHANNELS.reduce((t, c) => t + (MATRIX[c][s] ?? 0), 0);
+const channelTotal = (c: (typeof CHANNELS)[number]) => STATUS_CODES.reduce((t, s) => t + (MATRIX[c][s] ?? 0), 0);
+
+describe("saarang plan constants", () => {
+  it("has the exact status counts", () => {
+    const want = { to_contact: 55, send_mail: 12, slabs_sent: 28, didnt_pick: 14, contacted: 30, ghosting: 14, prospective: 14, converted: 4, rejected: 42, left_company: 4, wrong_number: 3 };
+    for (const s of STATUS_CODES) expect(statusTotal(s)).toBe(want[s]);
+  });
+
+  it("has the exact channel totals and 220 companies", () => {
+    const want = { cold_database: 65, past_sponsors: 30, other_fest: 30, agency: 20, new_local: 20, artist_linked: 15, csr: 12, inbound_referral: 10, ipl_sports: 10, institute: 8 };
+    for (const c of CHANNELS) expect(channelTotal(c)).toBe(want[c]);
+    expect(CHANNELS.reduce((t, c) => t + channelTotal(c), 0)).toBe(220);
+  });
+
+  it("splits the queue 25 warm and 42 other, with no artist-linked in the queue", () => {
+    const q = (c: (typeof CHANNELS)[number]) => (MATRIX[c].to_contact ?? 0) + (MATRIX[c].send_mail ?? 0);
+    expect(CHANNELS.filter((c) => WARM_CHANNELS.has(c)).reduce((t, c) => t + q(c), 0)).toBe(25);
+    expect(CHANNELS.filter((c) => !WARM_CHANNELS.has(c)).reduce((t, c) => t + q(c), 0)).toBe(42);
+    expect(q("artist_linked")).toBe(0);
+  });
+
+  it("has 86 in flight", () => {
+    expect(["slabs_sent", "didnt_pick", "contacted", "ghosting"].reduce((t, s) => t + statusTotal(s as (typeof STATUS_CODES)[number]), 0)).toBe(86);
+  });
+
+  it("has the prospect and converted amounts", () => {
+    expect(PROSPECTS.reduce((t, p) => t + p.amount, 0)).toBe(3_075_000);
+    const top5 = [...PROSPECTS].sort((a, b) => b.amount - a.amount).slice(0, 5).reduce((t, p) => t + p.amount, 0);
+    expect(top5 / 3_075_000).toBeCloseTo(0.585, 3);
+    expect(CONVERTED.reduce((t, v) => t + v.total, 0)).toBe(1_100_000);
+    expect(CONVERTED.reduce((t, v) => t + v.inKind, 0)).toBe(110_000);
+    for (const c of CHANNELS) {
+      expect(PROSPECTS.filter((p) => p.channel === c).length).toBeLessThanOrEqual(MATRIX[c].prospective ?? 0);
+      expect(CONVERTED.filter((p) => p.channel === c).length).toBeLessThanOrEqual(MATRIX[c].converted ?? 0);
+    }
+  });
+});
+=== C:\Users\poras wadhai\deal-drive\tests\smoke.test.ts ===
+import { describe, expect, it } from "vitest";
+
+describe("phase 0", () => {
+  it("runs vitest", () => {
+    expect(true).toBe(true);
+  });
+});
+

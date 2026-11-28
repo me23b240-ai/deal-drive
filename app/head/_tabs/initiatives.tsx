@@ -1,4 +1,5 @@
 import { EmptyBox, ErrorBox } from "@/components/head/KpiCards";
+import { SourceScorecardSection } from "@/components/head/SourceScorecardSection";
 import { InitiativeCards } from "@/components/head/InitiativeCards";
 import { errorMessage } from "@/lib/db/errors";
 import { getInitiativeBoard, type InitiativeBoard } from "@/lib/db/queries/head-a-initiatives";
@@ -17,7 +18,7 @@ export default async function InitiativesTab({ ctx }: { ctx: Ctx }) {
       {board.cards.length === 0 ? (
         <EmptyBox message="No initiatives found for this event. Run the Saarang seed." />
       ) : (
-        <InitiativeCards board={board} locked={ctx.isLocked} />
+        <><InitiativeCards board={board} locked={ctx.isLocked} /><SourceScorecardSection ctx={ctx} /></>
       )}
     </div>
   );

@@ -43,7 +43,7 @@ const bodySchema = z.discriminatedUnion("section", [
       inkindScope: z.enum(["all", "new_only"]),
       stretchWarmLeads: leads,
       stretchOtherLeads: leads,
-      artistLeads: leads,
+      warmSplit: z.object({ network: leads, referral: leads }), baselineAvgDeal: z.number().min(0).max(100_000_000),
       base: scenario,
       stretch: scenario,
     }),

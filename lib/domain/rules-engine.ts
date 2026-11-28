@@ -14,6 +14,15 @@ export const RULE_METRICS = [
   "deals_idle_gt10_after_3_nudges",
   "inkind_share_new",
   "personalised_vs_template_ratio",
+  "proposals_count",
+  "bundle_share",
+  "avg_proposed_inr",
+  "prefest_share",
+  "early_bird_share",
+  "intro_asks",
+  "intro_yield",
+  "qualified_candidates",
+  "mou_lag_bdays_max",
   "today",
 ] as const;
 

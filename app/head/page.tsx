@@ -14,10 +14,12 @@ import PlanTab from "./_tabs/plan";
 import RisksTab from "./_tabs/risks";
 import SettingsTab from "./_tabs/settings";
 import TeamTab from "./_tabs/team";
+import type { ReactNode } from "react";
+import { ChatWidget } from "@/components/chat/ChatWidget";
 
 export const dynamic = "force-dynamic";
 
-type Tab = { id: string; label: string };
+type Tab = { id: string; label: string; href?: string };
 
 const SAARANG_TABS: Tab[] = [
   { id: "overview", label: "Overview" },
@@ -77,10 +79,10 @@ export default async function HeadPage({ searchParams }: { searchParams: Promise
       <main className="space-y-6 p-4 sm:p-6">
         <nav aria-label="Head sections" className="overflow-x-auto">
           <ul className="flex min-w-max gap-2">
-            {tabs.map((t) => (
+            {[...tabs, ...(ctx.eventId.startsWith("campusfest") ? [] : [{ id: "leads", label: "Lead intake", href: "/head/leads" }, { id: "peer-fests", label: "Peer fests", href: "/head/peer-fests" }, { id: "approvals", label: "Approvals", href: "/head/approvals" }])].map((t: Tab) => (
               <li key={t.id}>
                 <Link
-                  href={`/head?tab=${t.id}`}
+                  href={t.href ?? `/head?tab=${t.id}`}
                   aria-current={t.id === active ? "page" : undefined}
                   className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${
                     t.id === active ? "border-accent bg-accent/10 text-accent" : "border-border text-muted hover:text-foreground"

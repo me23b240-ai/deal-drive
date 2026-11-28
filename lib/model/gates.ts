@@ -12,9 +12,9 @@ export type GateStatus = {
 };
 
 export const DEFAULT_GATES: Gate[] = [
-  { gateOn: "2026-12-07", baseInr: 1_320_000, stretchInr: 1_680_000 },
-  { gateOn: "2026-12-14", baseInr: 1_600_000, stretchInr: 2_390_000 },
-  { gateOn: "2026-12-21", baseInr: 1_880_000, stretchInr: 3_110_000 },
+  { gateOn: "2026-12-07", baseInr: 1_321_500, stretchInr: 1_581_500 },
+  { gateOn: "2026-12-14", baseInr: 1_543_000, stretchInr: 2_063_000 },
+  { gateOn: "2026-12-21", baseInr: 1_764_500, stretchInr: 2_544_500 },
 ];
 
 export function signedAsOf(deals: SignedDeal[], date: string): number {

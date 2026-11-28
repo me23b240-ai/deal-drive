@@ -36,7 +36,7 @@ export function isLegalTransition(from: StatusCode, to: StatusCode): boolean {
 
 /** Statuses a coordinator can pick from the dropdown. Slabs sent is set by "Mark mail sent", not here. */
 export function legalNextStatuses(from: StatusCode): StatusCode[] {
-  return STATUS_CODES.filter((s) => s !== "slabs_sent" && isLegalTransition(from, s));
+  return STATUS_CODES.filter((s) => s !== "slabs_sent" && s !== "converted" && isLegalTransition(from, s));
 }
 
 /** Returns a friendly message for the first problem, or null when the change is allowed. */
@@ -58,4 +58,31 @@ export function validateTransition(from: StatusCode, input: StatusChangeInput): 
   }
   if (to === "rejected" && !(input.rejectionReason ?? "").trim()) return "Rejected needs a reason.";
   return null;
+}
+
+// ---- deal stages ----
+
+export const OPEN_STAGES = ["prospecting", "proposal_sent", "negotiating", "mou_sent"] as const;
+export const ALL_DEAL_STAGES = [...OPEN_STAGES, "partner_confirmed", "lost"] as const;
+export type DealStageCode = (typeof ALL_DEAL_STAGES)[number];
+
+export const DEAL_STAGE_LABELS: Record<DealStageCode, string> = {
+  prospecting: "Prospecting",
+  proposal_sent: "Proposal sent",
+  negotiating: "Negotiating",
+  mou_sent: "MoU sent",
+  partner_confirmed: "Partner confirmed",
+  lost: "Lost",
+};
+
+/** Open stages move freely. Confirming needs a sent MoU. Lost is reachable from any open stage. */
+export function isLegalDealMove(from: DealStageCode, to: DealStageCode): boolean {
+  if (from === to) return false;
+  if (from === "partner_confirmed" || from === "lost") return false;
+  if (to === "partner_confirmed") return from === "mou_sent";
+  return true;
+}
+
+export function legalNextDealStages(from: DealStageCode): DealStageCode[] {
+  return ALL_DEAL_STAGES.filter((s) => isLegalDealMove(from, s));
 }

@@ -1,0 +1,63 @@
+﻿C:\Users\poras wadhai\deal-drive\lib\ai\tool-impl.ts:83:  put(patch, "stretchWarmLeads", count("stretch_warm_leads", 500));
+C:\Users\poras wadhai\deal-drive\lib\db\queries\crm-deals.ts:7:export const OPEN_DEAL_STAGES = ["prospecting", "proposal_sent", "negotiating"] as const;
+C:\Users\poras wadhai\deal-drive\lib\db\queries\crm-deals.ts:8:export type OpenDealStage = (typeof OPEN_DEAL_STAGES)[number];
+C:\Users\poras wadhai\deal-drive\lib\db\queries\crm-deals.ts:20:  if (!(OPEN_DEAL_STAGES as readonly string[]).includes(String(data.stage))) throw new ValidationError("This deal is already closed.");
+C:\Users\poras wadhai\deal-drive\lib\db\queries\head-a-plan.ts:50:  const sw = seg(s.stretchWarmLeads, s.stretch.warm);
+C:\Users\poras wadhai\deal-drive\lib\db\queries\head-a-plan.ts:63:    row("new_warm", "New outreach: warm leads", "count", 0, st.queueWarm, s.stretchWarmLeads),
+C:\Users\poras wadhai\deal-drive\lib\db\queries\plan.ts:4:import { attributeStretch, type Attribution } from "../../model/attribution";
+C:\Users\poras wadhai\deal-drive\lib\db\queries\plan.ts:16:import { DEFAULT_SETTINGS, mergeSettings, projectPlan, type ModelSettings, type PlanProjection, type PlanState } from "../../model/projection";
+C:\Users\poras wadhai\deal-drive\lib\db\queries\plan.ts:24:  const base = stored && typeof stored === "object" ? mergeSettings(stored as SettingsPatch, DEFAULT_SETTINGS) : DEFAULT_SETTINGS;
+C:\Users\poras wadhai\deal-drive\lib\db\queries\plan.ts:93:    attribution: attributeStretch(state, settings),
+C:\Users\poras wadhai\deal-drive\lib\domain\channels.ts:37:export function channelToInitiative(channel: ChannelCode): string {
+C:\Users\poras wadhai\deal-drive\lib\domain\rules-engine.ts:6:export const RULE_METRICS = [
+C:\Users\poras wadhai\deal-drive\lib\domain\rules-engine.ts:42:    if (!(RULE_METRICS as readonly string[]).includes(c.m)) errors.push(`Clause ${i + 1}: unknown metric "${c.m}"`);
+C:\Users\poras wadhai\deal-drive\lib\model\assumptions.ts:23:export const DEFAULT_ASSUMPTIONS: ModelAssumptions = {
+C:\Users\poras wadhai\deal-drive\lib\model\assumptions.ts:69:  const merged = merge(DEFAULT_ASSUMPTIONS, raw);
+C:\Users\poras wadhai\deal-drive\lib\model\attribution.ts:1:import { DEFAULT_SETTINGS, floorCash, project, scenarioInput, segmentDeals, type ModelSettings, type PlanState } from "./projection";
+C:\Users\poras wadhai\deal-drive\lib\model\attribution.ts:17:export function attributeStretch(state: PlanState, settings: ModelSettings = DEFAULT_SETTINGS): Attribution {
+C:\Users\poras wadhai\deal-drive\lib\model\attribution.ts:30:  const bet3Leads = Math.max(0, settings.stretchWarmLeads - settings.artistLeads);
+C:\Users\poras wadhai\deal-drive\lib\model\attribution.ts:32:  const bet4 = settings.artistLeads * perLead(st.warm) * avg * keep * p;
+C:\Users\poras wadhai\deal-drive\lib\model\derive.ts:1:import { WARM_CHANNELS, channelToInitiative, type ChannelCode } from "../domain/channels";
+C:\Users\poras wadhai\deal-drive\lib\model\derive.ts:55:  const inBet = (code: string): number => pool.filter((b) => channelToInitiative(b.source_channel as ChannelCode) === code).length;
+C:\Users\poras wadhai\deal-drive\lib\model\derive.ts:56:  const bet3Need = Math.max(0, settings.stretchWarmLeads - settings.artistLeads);
+C:\Users\poras wadhai\deal-drive\lib\model\derive.ts:61:    stretchNeed: settings.stretchWarmLeads,
+C:\Users\poras wadhai\deal-drive\lib\model\derive.ts:63:    gapToStretch: Math.max(0, settings.stretchWarmLeads - pool.length),
+C:\Users\poras wadhai\deal-drive\lib\model\derive.ts:64:    perBet: [row("bet-3", "Warm renewals", bet3Need), row("bet-4", "Lineup-triggered pitch", settings.artistLeads)],
+C:\Users\poras wadhai\deal-drive\lib\model\gates.ts:14:export const DEFAULT_GATES: Gate[] = [
+C:\Users\poras wadhai\deal-drive\lib\model\projection.ts:75:  stretchWarmLeads: number;
+C:\Users\poras wadhai\deal-drive\lib\model\projection.ts:77:  artistLeads: number;
+C:\Users\poras wadhai\deal-drive\lib\model\projection.ts:82:export const DEFAULT_SETTINGS: ModelSettings = {
+C:\Users\poras wadhai\deal-drive\lib\model\projection.ts:86:  stretchWarmLeads: 85,
+C:\Users\poras wadhai\deal-drive\lib\model\projection.ts:88:  artistLeads: 30,
+C:\Users\poras wadhai\deal-drive\lib\model\projection.ts:115:export function scenarioInput(state: PlanState, scenario: Scenario, settings: ModelSettings = DEFAULT_SETTINGS): ProjectionInput {
+C:\Users\poras wadhai\deal-drive\lib\model\projection.ts:117:  const warmLeads = scenario === "base" ? state.queueWarm : settings.stretchWarmLeads;
+C:\Users\poras wadhai\deal-drive\lib\model\projection.ts:137:export function projectPlan(state: PlanState, settings: ModelSettings = DEFAULT_SETTINGS): PlanProjection {
+C:\Users\poras wadhai\deal-drive\lib\model\projection.ts:149:export function mergeSettings(patch: Patch = {}, from: ModelSettings = DEFAULT_SETTINGS): ModelSettings {
+C:\Users\poras wadhai\deal-drive\lib\seed\saarang.ts:15:import { CHANNELS, CHANNEL_LABELS, channelToInitiative, type ChannelCode } from "../domain/channels";
+C:\Users\poras wadhai\deal-drive\lib\seed\saarang.ts:17:import { DEFAULT_ASSUMPTIONS } from "../model/assumptions";
+C:\Users\poras wadhai\deal-drive\lib\seed\saarang.ts:474:      weekly_target_default: 10, model_assumptions: DEFAULT_ASSUMPTIONS,
+C:\Users\poras wadhai\deal-drive\lib\seed\saarang.ts:528:      initiative_id: initiativeCampaign.get(channelToInitiative(c.channel)) ?? null,
+C:\Users\poras wadhai\deal-drive\lib\seed\saarang.ts:612:  const A = DEFAULT_ASSUMPTIONS;
+C:\Users\poras wadhai\deal-drive\app\api\head\deals\route.ts:6:import { OPEN_DEAL_STAGES } from "@/lib/db/queries/crm-deals";
+C:\Users\poras wadhai\deal-drive\app\api\head\deals\route.ts:14:  z.object({ action: z.literal("stage"), dealId: z.string().min(1), stage: z.enum(OPEN_DEAL_STAGES) }),
+C:\Users\poras wadhai\deal-drive\app\api\head\settings\route.ts:44:      stretchWarmLeads: leads,
+C:\Users\poras wadhai\deal-drive\app\api\head\settings\route.ts:46:      artistLeads: leads,
+C:\Users\poras wadhai\deal-drive\components\head\SettingsForms.tsx:134:      stretchWarmLeads: String(p.stretchWarmLeads), stretchOtherLeads: String(p.stretchOtherLeads), artistLeads: String(p.artistLeads),
+C:\Users\poras wadhai\deal-drive\components\head\SettingsForms.tsx:155:        stretchWarmLeads: Math.round(Number(v.stretchWarmLeads)), stretchOtherLeads: Math.round(Number(v.stretchOtherLeads)), artistLeads: Math.round(Number(v.artistLeads)),
+C:\Users\poras wadhai\deal-drive\components\head\SettingsForms.tsx:173:        <Field id="p-wl" label="Stretch warm leads" value={v.stretchWarmLeads ?? ""} onChange={set("stretchWarmLeads")} disabled={s.disabled} />
+C:\Users\poras wadhai\deal-drive\components\head\SettingsForms.tsx:175:        <Field id="p-al" label="Artist-linked leads (bet-4)" value={v.artistLeads ?? ""} onChange={set("artistLeads")} disabled={s.disabled} />
+C:\Users\poras wadhai\deal-drive\tests\assumptions.test.ts:2:import { DEFAULT_ASSUMPTIONS, resolveAssumptions } from "@/lib/model/assumptions";
+C:\Users\poras wadhai\deal-drive\tests\assumptions.test.ts:6:    expect(resolveAssumptions({})).toEqual(DEFAULT_ASSUMPTIONS);
+C:\Users\poras wadhai\deal-drive\tests\assumptions.test.ts:7:    expect(resolveAssumptions(null)).toEqual(DEFAULT_ASSUMPTIONS);
+C:\Users\poras wadhai\deal-drive\tests\derive.test.ts:15:import { DEFAULT_SETTINGS, projectPlan } from "@/lib/model/projection";
+C:\Users\poras wadhai\deal-drive\tests\derive.test.ts:54:    const s = leadSupply(seedLike(), DEFAULT_SETTINGS);
+C:\Users\poras wadhai\deal-drive\tests\derive.test.ts:63:    expect(leadSupply(rows, DEFAULT_SETTINGS).warmPool).toBe(26);
+C:\Users\poras wadhai\deal-drive\tests\model.test.ts:2:import { attributeStretch } from "@/lib/model/attribution";
+C:\Users\poras wadhai\deal-drive\tests\model.test.ts:3:import { DEFAULT_GATES, closingOnlyPhase, gateStatuses, missedBaseGate, paceLine, signedAsOf } from "@/lib/model/gates";
+C:\Users\poras wadhai\deal-drive\tests\model.test.ts:42:  const a = attributeStretch(S);
+C:\Users\poras wadhai\deal-drive\tests\model.test.ts:56:    expect(attributeStretch(S, mergeSettings({ inkindScope: "new_only" })).reconciles).toBe(true);
+C:\Users\poras wadhai\deal-drive\tests\model.test.ts:70:    expect(gateStatuses(DEFAULT_GATES, deals, "2026-11-30").every((g) => g.status === "UPCOMING")).toBe(true);
+C:\Users\poras wadhai\deal-drive\tests\model.test.ts:73:    const s = gateStatuses(DEFAULT_GATES, deals, "2026-12-15");
+C:\Users\poras wadhai\deal-drive\tests\model.test.ts:81:    expect(closingOnlyPhase(DEFAULT_GATES, "2026-12-21")).toBe(false);
+C:\Users\poras wadhai\deal-drive\tests\model.test.ts:82:    expect(closingOnlyPhase(DEFAULT_GATES, "2026-12-22")).toBe(true);
+C:\Users\poras wadhai\deal-drive\tests\model.test.ts:85:    const p = paceLine(DEFAULT_GATES, "2026-12-10", 1_400_000, "2027-01-05", 2_207_500, 3_976_250);

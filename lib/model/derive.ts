@@ -1,4 +1,4 @@
-import { WARM_CHANNELS, channelToInitiative, type ChannelCode } from "../domain/channels";
+import { channelToInitiative, isWarmLead } from "../domain/channels";
 import { businessDaysBetween, toIstDate, type Holiday } from "../domain/bizdays";
 import type { Metrics } from "../domain/rules-engine";
 import type { ModelSettings, PlanState } from "./projection";
@@ -20,12 +20,12 @@ export type BrandRow = {
   first_outreach_at: string | null;
   last_touch_at: string | null;
   next_follow_up: string | null;
-  initiative_id: string | null;
+  initiative_id: string | null;  signal_tag?: string | null | undefined; agency_commission_pct?: number | undefined;
 };
 
 export type SignedDeal = { dealId: string; brandId: string; amountInr: number; cashInr: number; inKindInr: number; confirmedOn: string };
 
-export const isWarm = (channel: string | null): boolean => !!channel && WARM_CHANNELS.has(channel as ChannelCode);
+export const isWarm = (channel: string | null, signal?: string | null): boolean => isWarmLead(channel, signal);
 
 export function buildPlanState(brands: BrandRow[], signed: SignedDeal[]): PlanState {
   const prospects = brands.filter((b) => b.crm_status === "prospective");
@@ -37,8 +37,8 @@ export function buildPlanState(brands: BrandRow[], signed: SignedDeal[]): PlanSt
     signedDealsToDate: signed.length,
     openProspectInr: prospects.reduce((t, b) => t + b.approx_amount_inr, 0),
     openProspectCount: prospects.length,
-    queueWarm: queue.filter((b) => isWarm(b.source_channel)).length,
-    queueOther: queue.filter((b) => !isWarm(b.source_channel)).length,
+    queueWarm: queue.filter((b) => isWarm(b.source_channel, b.signal_tag)).length,
+    queueOther: queue.filter((b) => !isWarm(b.source_channel, b.signal_tag)).reduce((t, b) => t + (1 - (b.agency_commission_pct ?? 0) / 100), 0),
     observedInkindShare: total > 0 ? inKind / total : 0,
   };
 }
@@ -49,11 +49,11 @@ export type LeadSupply = { warmPool: number; baseNeed: number; stretchNeed: numb
 /** Warm pool = warm companies queued now plus warm companies first outreached on or after the plan start. */
 export function leadSupply(brands: BrandRow[], settings: ModelSettings, planStart: string = PLAN_START): LeadSupply {
   const counts = (b: BrandRow): boolean =>
-    isWarm(b.source_channel) &&
+    isWarm(b.source_channel, b.signal_tag) &&
     ((b.crm_status !== null && QUEUE_STATUSES.includes(b.crm_status)) || (!!b.first_outreach_at && toIstDate(b.first_outreach_at) >= planStart));
   const pool = brands.filter(counts);
-  const inBet = (code: string): number => pool.filter((b) => channelToInitiative(b.source_channel as ChannelCode) === code).length;
-  const bet3Need = Math.max(0, settings.stretchWarmLeads - settings.artistLeads);
+  const inBet = (code: string): number => pool.filter((b) => channelToInitiative(String(b.source_channel), b.signal_tag) === code).length;
+  const bet2Need = settings.warmSplit.network;
   const row = (code: string, label: string, need: number): LeadSupplyRow => ({ code, label, pool: inBet(code), need, gap: Math.max(0, need - inBet(code)) });
   return {
     warmPool: pool.length,
@@ -61,7 +61,7 @@ export function leadSupply(brands: BrandRow[], settings: ModelSettings, planStar
     stretchNeed: settings.stretchWarmLeads,
     gapToBase: Math.max(0, BASE_WARM_NEED - pool.length),
     gapToStretch: Math.max(0, settings.stretchWarmLeads - pool.length),
-    perBet: [row("bet-3", "Warm renewals", bet3Need), row("bet-4", "Lineup-triggered pitch", settings.artistLeads)],
+    perBet: [row("bet-2", "Warm network engine", bet2Need), row("bet-4", "Referral and intro magnet", settings.warmSplit.referral)],
   };
 }
 

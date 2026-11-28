@@ -28,7 +28,7 @@ export function getPlanSettings(ctx: Ctx, patch: SettingsPatch = {}): ModelSetti
 export async function getBrandRows(ctx: Ctx): Promise<BrandRow[]> {
   const rows = await fetchAll<Record<string, unknown>>(
     "brands",
-    "id, name, owner_id, crm_status, source_channel, approx_amount_inr, first_outreach_at, last_touch_at, next_follow_up, initiative_id",
+    "id, name, owner_id, crm_status, source_channel, approx_amount_inr, first_outreach_at, last_touch_at, next_follow_up, initiative_id, signal_tag, agency_commission_pct",
     { event_id: ctx.eventId },
   );
   return rows
@@ -43,7 +43,7 @@ export async function getBrandRows(ctx: Ctx): Promise<BrandRow[]> {
       first_outreach_at: (r.first_outreach_at as string | null) ?? null,
       last_touch_at: (r.last_touch_at as string | null) ?? null,
       next_follow_up: (r.next_follow_up as string | null) ?? null,
-      initiative_id: (r.initiative_id as string | null) ?? null,
+      initiative_id: (r.initiative_id as string | null) ?? null, signal_tag: (r.signal_tag as string | null) ?? null, agency_commission_pct: num(r.agency_commission_pct),
     }));
 }
 

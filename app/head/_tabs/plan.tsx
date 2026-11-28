@@ -1,6 +1,7 @@
 import { Card, ErrorBox } from "@/components/head/KpiCards";
 import { GatesChart } from "@/components/head/GatesChart";
 import { LeadSupply } from "@/components/head/LeadSupply";
+import { ScenarioSection } from "@/components/head/ScenarioSection";
 import { ModelTable } from "@/components/head/ModelTable";
 import { errorMessage } from "@/lib/db/errors";
 import { getPlanView, type PlanView } from "@/lib/db/queries/head-a-plan";
@@ -33,6 +34,8 @@ export default async function PlanTab({ ctx }: { ctx: Ctx }) {
       <Card title="Model: floor, base and stretch (live)">
         <ModelTable view={view} />
       </Card>
+
+      <ScenarioSection ctx={ctx} />
 
       <Card title="Pace and portfolio gates">
         <GatesChart report={view.gates} today={ctx.todayIst} planStart={model.planStart} />

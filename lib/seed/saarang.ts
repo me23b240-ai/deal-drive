@@ -18,10 +18,10 @@ import { DEFAULT_ASSUMPTIONS } from "../model/assumptions";
 import { SAARANG_SECTORS } from "./constants/sectors";
 import { COORDINATORS, HEAD, type CoordKey } from "./constants/team";
 import {
-  CONVERTED, GATES, HOLIDAYS, INITIATIVES, MATRIX, PROSPECTS, STALE_RULES, TEAM_GOALS,
+  CONVERTED, HOLIDAYS, MATRIX, PROSPECTS, STALE_RULES, TEAM_GOALS,
   type FixedConverted, type FixedProspect,
 } from "./constants/saarang-plan";
-import { CATALOG, FACTS, PACKAGES } from "./constants/saarang-facts";
+import { CATALOG, FACTS, PACKAGES } from "./constants/saarang-facts"; import { GATES, INITIATIVES } from "./constants/saarang-bets";
 
 const EVENT_ID = "saarang-2027";
 const IST = "+05:30";
@@ -620,7 +620,7 @@ export async function seedSaarang(anchorArg?: string): Promise<SaarangReport> {
         id: dealId, event_id: EVENT_ID, source_id: `sg27-d-${c.i + 1}`, brand_id: c.id, primary_contact_id: c.contactIds[0],
         campaign_id: channelCampaign.get(c.channel), owner_id: ownerId(c), name: `${plain(c.name)} festival partnership`,
         support_type: "cash", stage: c.prospect.stage, proposed_value_inr: c.prospect.amount, signed_value_inr: 0,
-        signed_cash_inr: 0, signed_in_kind_inr: 0, stage_changed_at: last.at, next_follow_up: c.followUp, created_at: proAt,
+        signed_cash_inr: 0, signed_in_kind_inr: 0, stage_changed_at: last.at, next_follow_up: c.followUp, created_at: proAt, payment_terms: "75_25",
       });
       hist(dealId, c, "prospecting", c.prospect.amount, 0, proAt);
       if (c.prospect.stage !== "prospecting") hist(dealId, c, c.prospect.stage, c.prospect.amount, 0, last.at);

@@ -9,7 +9,7 @@ import { EmptyBox } from "./KpiCards";
 const STAGES = [
   { id: "prospecting", label: "Prospecting" },
   { id: "proposal_sent", label: "Proposal sent" },
-  { id: "negotiating", label: "Negotiating" },
+  { id: "negotiating", label: "Negotiating" }, { id: "mou_sent", label: "MoU sent" },
 ];
 
 export function DealDesk({ board, locked }: { board: DealBoard; locked: boolean }) {

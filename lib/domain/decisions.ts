@@ -13,6 +13,13 @@ export type Decision = {
   tasksToCreate: TaskDraft[];
 };
 
+export type V2Signals = {
+  mouSent: { dealId: string; company: string; ownerId: string | null; ownerName: string; amountInr: number; lagBdays: number }[];
+  termsPending: { dealId: string; company: string; ownerName: string; amountInr: number; ageBdays: number }[];
+  peerFest: { total: number; notStarted: number; bdaysSincePlanStart: number };
+  upside: { extraQualified: number; byDate: string; today: string };
+};
+
 export type DecisionSnapshot = {
   initiatives: { code: string; name: string; badge: Badge; reason: string }[];
   coordinators: {
@@ -31,7 +38,13 @@ export type DecisionSnapshot = {
   overduePayments: { dealId: string; company: string; ownerId: string | null; amountInr: number; dueDate: string }[];
   ownershipConflicts: { company: string; ownerIds: string[]; ownerNames: string[] }[];
   gates: GateStatus[];
+  v2?: V2Signals;
 };
+
+export const MOU_LATE_BDAYS = 5;
+export const TERMS_LATE_BDAYS = 1;
+export const PEER_FEST_START_BDAYS = 3;
+export const UPSIDE_EXTRA_LEADS = 25;
 
 const RANK: Record<Severity, number> = { high: 0, medium: 1, low: 2 };
 
@@ -117,6 +130,44 @@ export function buildDecisions(s: DecisionSnapshot): Decision[] {
       action: "Move hours from the colder lanes to the deal desk and warm renewals.",
       tasksToCreate: [],
     });
+  }
+
+  const v = s.v2;
+  if (v) {
+    const lateMou = v.mouSent.filter((m) => m.lagBdays > MOU_LATE_BDAYS);
+    if (lateMou.length > 0) {
+      out.push({
+        id: "mou-unsigned", severity: "high", title: `${lateMou.length} MoUs sent but not signed after ${MOU_LATE_BDAYS} business days`,
+        evidence: lateMou.map((m) => `${m.company} (${formatInr(m.amountInr)}, waiting ${m.lagBdays} business days)`).join("; ") + ".",
+        action: "Call the signatory today and ask what is blocking the signature.",
+        tasksToCreate: lateMou.map((m) => ({ ownerId: m.ownerId, brandId: null, title: `Chase MoU signature from ${m.company}` })),
+      });
+    }
+    const late = v.termsPending.filter((t) => t.ageBdays > TERMS_LATE_BDAYS);
+    if (late.length > 0) {
+      out.push({
+        id: "terms-pending", severity: "high", title: `${late.length} deals wait for terms approval`,
+        evidence: late.map((t) => `${t.company} (${formatInr(t.amountInr)}, ${t.ageBdays} business days, ${t.ownerName})`).join("; ") + ".",
+        action: "Open the approvals queue and approve or reject today so the coordinator can move.",
+        tasksToCreate: [],
+      });
+    }
+    if (v.peerFest.total > 0 && v.peerFest.notStarted > 0 && v.peerFest.bdaysSincePlanStart >= PEER_FEST_START_BDAYS) {
+      out.push({
+        id: "peerfest-research", severity: "medium", title: `Peer-fest research not started on ${v.peerFest.notStarted} of ${v.peerFest.total} fests`,
+        evidence: `${v.peerFest.bdaysSincePlanStart} business days have passed since the plan start.`,
+        action: "Assign a researcher to each fest that is still marked todo.",
+        tasksToCreate: [],
+      });
+    }
+    if (v.upside.extraQualified >= UPSIDE_EXTRA_LEADS && v.upside.today <= v.upside.byDate) {
+      out.push({
+        id: "upside-trigger", severity: "low", title: "Upside trigger reached: the moonshot case is in reach",
+        evidence: `${v.upside.extraQualified} qualified peer-fest leads against ${UPSIDE_EXTRA_LEADS} needed by ${v.upside.byDate}.`,
+        action: "Review the upside scenario on the Plan page and raise the stretch warm lead target.",
+        tasksToCreate: [],
+      });
+    }
   }
 
   return out.sort((a, b) => RANK[a.severity] - RANK[b.severity]);

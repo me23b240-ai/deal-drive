@@ -120,7 +120,7 @@ export type DealDeskRow = {
   brand_id: string;
   company: string;
   owner_id: string | null;
-  stage: "prospecting" | "proposal_sent" | "negotiating";
+  stage: "prospecting" | "proposal_sent" | "negotiating" | "mou_sent";
   proposed_inr: number;
   next_follow_up: string | null;
   last_touch: string;

@@ -68,24 +68,29 @@ export type ScenarioSettings = {
   other: { response: number; proposalRate: number; signRate: number };
 };
 
+export type WarmSplit = { network: number; referral: number };
+
 export type ModelSettings = {
   avgNewDeal: number;
+  baselineAvgDeal: number;
   prefestShare: number;
   inkindScope: InkindScope;
+  /** Total warm leads in the stretch case, including the warm leads already queued. */
   stretchWarmLeads: number;
   stretchOtherLeads: number;
-  artistLeads: number;
+  warmSplit: WarmSplit;
   base: ScenarioSettings;
   stretch: ScenarioSettings;
 };
 
 export const DEFAULT_SETTINGS: ModelSettings = {
   avgNewDeal: 125_000,
+  baselineAvgDeal: 93_000,
   prefestShare: 0.75,
   inkindScope: "all",
-  stretchWarmLeads: 85,
+  stretchWarmLeads: 60,
   stretchOtherLeads: 42,
-  artistLeads: 30,
+  warmSplit: { network: 45, referral: 15 },
   base: {
     closeRate: 0.25,
     inkindShare: 0.1,
@@ -146,6 +151,8 @@ type Patch = {
   [K in keyof ModelSettings]?: ModelSettings[K] extends object ? Partial<{ [J in keyof ModelSettings[K]]: unknown }> : ModelSettings[K];
 };
 
+const pickNum = (v: unknown, d: number): number => (typeof v === "number" && Number.isFinite(v) ? v : d);
+
 export function mergeSettings(patch: Patch = {}, from: ModelSettings = DEFAULT_SETTINGS): ModelSettings {
   const p = patch as Record<string, unknown>;
   const scen = (k: Scenario): ScenarioSettings => {
@@ -157,5 +164,12 @@ export function mergeSettings(patch: Patch = {}, from: ModelSettings = DEFAULT_S
       other: { ...from[k].other, ...(q.other ?? {}) },
     };
   };
-  return { ...from, ...(patch as Partial<ModelSettings>), base: scen("base"), stretch: scen("stretch") };
+  const w = (p.warmSplit ?? {}) as Record<string, unknown>;
+  return {
+    ...from,
+    ...(patch as Partial<ModelSettings>),
+    base: scen("base"),
+    stretch: scen("stretch"),
+    warmSplit: { network: pickNum(w.network, from.warmSplit.network), referral: pickNum(w.referral, from.warmSplit.referral) },
+  };
 }

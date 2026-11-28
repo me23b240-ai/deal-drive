@@ -48,15 +48,15 @@ describe("plan state from rows", () => {
     const p = projectPlan({ ...st, signedDealsToDate: 4 });
     expect(p.floor).toBe(742_500);
     expect(p.base.cashBeforeFest).toBe(1_490_063);
-    expect(p.stretch.cashBeforeFest).toBe(2_833_078);
+    expect(p.stretch.cashBeforeFest).toBe(2_499_094);
   });
-  it("has a 60 warm lead gap to stretch", () => {
+  it("has a 35 warm lead gap to stretch", () => {
     const s = leadSupply(seedLike(), DEFAULT_SETTINGS);
     expect(s.warmPool).toBe(25);
-    expect(s.gapToStretch).toBe(60);
+    expect(s.gapToStretch).toBe(35);
     expect(s.gapToBase).toBe(0);
-    expect(s.perBet[0]?.need).toBe(55);
-    expect(s.perBet[1]?.need).toBe(30);
+    expect(s.perBet[0]?.need).toBe(45);
+    expect(s.perBet[1]?.need).toBe(15);
   });
   it("counts warm companies outreached since the plan start", () => {
     const rows = [...seedLike(), brand(999, { crm_status: "contacted", source_channel: "other_fest", first_outreach_at: "2026-12-02T05:00:00Z" }), brand(998, { crm_status: "contacted", source_channel: "other_fest", first_outreach_at: "2026-11-10T05:00:00Z" })];

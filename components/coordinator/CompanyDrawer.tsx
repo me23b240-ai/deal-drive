@@ -5,6 +5,7 @@ import { CHANNEL_LABELS, type ChannelCode } from "@/lib/domain/channels";
 import { STATUS_LABELS, type StatusCode } from "@/lib/domain/status";
 import { formatInr } from "@/lib/domain/money";
 import { StatusPill } from "./badges";
+import { PipelineStepper } from "./PipelineStepper";
 import { fmtDay } from "./format";
 import { useQueryNav } from "./nav";
 import { BTN, BTN_PRIMARY, CARD, INPUT, LABEL } from "./styles";
@@ -66,7 +67,7 @@ function QuickActions({ detail, locked }: { detail: CompanyDetail; locked: boole
             {q.label}
           </button>
         ))}
-        <button type="button" className={BTN} disabled title="Mail drafts arrive in the drafts step">
+        <button type="button" className={BTN} onClick={() => { window.location.href = `/coordinator?tab=drafts&company=${detail.id}`; }}>
           Draft mail
         </button>
       </div>
@@ -225,12 +226,13 @@ function DrawerBody({ detail, locked }: { detail: CompanyDetail; locked: boolean
         {detail.notes ? <p className="mt-3 border-t border-border pt-3 text-sm text-muted">{detail.notes}</p> : null}
       </section>
 
+      <PipelineStepper detail={detail} />
       <QuickActions detail={detail} locked={locked} />
       <Contacts detail={detail} locked={locked} />
 
       {detail.deal ? (
         <section className={`${CARD} p-4`} aria-label="Deal">
-          <h3 className="mb-3 text-sm font-semibold">Deal</h3>
+          <div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold">Deal</h3><a className={BTN} href={`/coordinator/slab/${detail.id}`}>Build slab</a><a className={BTN} href={`/coordinator/mou/${detail.id}`}>MoU</a></div>
           <p className="text-sm">
             <span className="capitalize">{detail.deal.stage.replace("_", " ")}</span>
             {detail.deal.signedInr > 0 ? (

@@ -4,6 +4,7 @@ import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/db/errors"
 import { STATUS_LABELS, type StatusCode } from "@/lib/domain/status";
 import type { Ctx } from "@/lib/types";
 import { num } from "./page";
+import type { PipelineFacts } from "@/lib/domain/pipeline";
 
 export type ContactRow = { id: string; name: string; jobTitle: string | null; email: string | null; phone: string | null; linkedinUrl: string | null };
 export type TimelineItem = { at: string; kind: "status" | "activity"; title: string; detail: string | null };
@@ -30,6 +31,7 @@ export type CompanyDetail = {
   timeline: TimelineItem[];
   deal: { id: string; stage: string; proposedInr: number; signedInr: number; cashInr: number; inKindInr: number; nextFollowUp: string | null } | null;
   payments: PaymentRow[];
+  pipeline?: PipelineFacts;
 };
 
 const ACTIVITY_TITLES: Record<string, string> = {

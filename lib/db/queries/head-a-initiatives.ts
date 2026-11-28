@@ -15,11 +15,11 @@ type Row = Record<string, unknown>;
 
 // Fallback concept text from the plan, used when campaigns.concept is empty.
 const CONCEPTS: Record<string, string> = {
-  "bet-1": "Closing squad (head plus closers) on the open prospects: custom slab within 1 business day, MoU the same day as the yes, daily 15-minute stand-up.",
-  "bet-2": "Cash-first terms: 75/25 by default, in-kind capped, discounted club-title and stall bundles only after the bundle start date.",
-  "bet-3": "Warm renewals: source more past-sponsor and other-fest leads, work the warm queue first, sector hooks from the fact bank.",
-  "bet-4": "Lineup-triggered pitch to artist-linked brands using the announced headliners.",
-  "bet-5": "Capped cold test on other-channel leads: personalised vs template opening, with a hard stop.",
+  "bet-1": "Deal desk + MoU in minutes: closing squad on the open prospects, custom slab within 1 business day, MoU sent in minutes.",
+  "bet-2": "Warm network engine: past, other-fest and peer-fest sponsors first, with sector hooks from the fact bank.",
+  "bet-3": "Offer design: cash-first terms, bundles, UGC add-ons and an early-bird discount.",
+  "bet-4": "Referral and intro magnet: ask warm contacts and signed sponsors for introductions.",
+  "bet-5": "Lead engine + capped cold/signal test: qualified candidate pipeline plus a personalised vs template test.",
 };
 
 const asNum = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
