@@ -1,5 +1,6 @@
 ﻿=== C:\Users\poras wadhai\deal-drive\app\api\campusfest\reset\route.ts ===
-export { dynamic } from "@/lib/api/not-implemented";
+// Remove: export { dynamic } from "@/lib/api/not-implemented";
+export const dynamic = "force-dynamic";
 import { notImplemented } from "@/lib/api/not-implemented";
 
 export function GET() {
